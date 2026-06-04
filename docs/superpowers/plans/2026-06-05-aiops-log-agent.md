@@ -567,7 +567,7 @@ Create `tests/test_detection.py`:
 ```python
 import json
 import math
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 import pytest
 from pydantic import ValidationError
@@ -649,6 +649,21 @@ def test_detection_service_bounded_pre_spike_and_active_period():
         base_time.replace(second=40),
     ]
     assert "active anomaly period" in anomalies[1].reason
+
+
+def test_detection_service_resets_active_period_across_window_gaps():
+    base_time = datetime(2026, 6, 5, 9, 0, tzinfo=timezone.utc)
+    windows = [
+        _window(base_time + timedelta(seconds=offset), latency)
+        for offset, latency in [(0, 100.0), (10, 100.0), (20, 100.0), (30, 220.0), (60, 140.0)]
+    ]
+    anomalies = DetectionService(
+        DetectionConfig(alpha=0.2, z_threshold=2.0, window_seconds=10)
+    ).detect_from_windows(windows)
+
+    assert [item.bucket_start for item in anomalies] == [
+        base_time + timedelta(seconds=30),
+    ]
 
 
 def test_detection_service_infers_type_without_label_leakage():
@@ -862,6 +877,7 @@ from __future__ import annotations
 
 from collections import defaultdict
 from dataclasses import dataclass, field
+from datetime import timedelta
 
 from aiops_agent.models.schemas import DetectedAnomaly, LogRecord, WindowMetric
 from aiops_agent.detection.ewma import ewma
@@ -909,8 +925,15 @@ class DetectionService:
             ]
             scores = z_scores(residuals)
             active_period = False
+            previous_window: WindowMetric | None = None
 
             for window, score, expected in zip(ordered, scores, baseline, strict=True):
+                if previous_window is not None:
+                    gap = window.bucket_start - previous_window.bucket_start
+                    if gap > timedelta(seconds=window.window_seconds):
+                        active_period = False
+                previous_window = window
+
                 above_baseline = window.latency_p95 > expected
                 if not above_baseline:
                     active_period = False
