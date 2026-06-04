@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections import defaultdict
 from dataclasses import dataclass, field
+from datetime import timedelta
 
 from aiops_agent.models.schemas import DetectedAnomaly, LogRecord, WindowMetric
 from aiops_agent.detection.ewma import ewma
@@ -52,8 +53,15 @@ class DetectionService:
             ]
             scores = z_scores(residuals)
             active_period = False
+            previous_window: WindowMetric | None = None
 
             for window, score, expected in zip(ordered, scores, baseline, strict=True):
+                if previous_window is not None:
+                    gap = window.bucket_start - previous_window.bucket_start
+                    if gap > timedelta(seconds=window.window_seconds):
+                        active_period = False
+                previous_window = window
+
                 above_baseline = window.latency_p95 > expected
                 if not above_baseline:
                     active_period = False

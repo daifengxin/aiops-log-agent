@@ -1,6 +1,6 @@
 import json
 import math
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 import pytest
 from pydantic import ValidationError
@@ -278,6 +278,29 @@ def test_detection_service_extends_active_high_latency_period():
         base_time.replace(second=50),
     ]
     assert "active anomaly period" in anomalies[1].reason
+
+
+def test_detection_service_resets_active_period_across_window_gaps():
+    base_time = datetime(2026, 6, 5, 9, 0, tzinfo=timezone.utc)
+    windows = [
+        _window(bucket_start=base_time + timedelta(seconds=offset), latency_p95=latency)
+        for offset, latency in [
+            (0, 100.0),
+            (10, 100.0),
+            (20, 100.0),
+            (30, 220.0),
+            (60, 140.0),
+        ]
+    ]
+
+    anomalies = DetectionService(
+        DetectionConfig(alpha=0.2, z_threshold=2.0, window_seconds=10)
+    ).detect_from_windows(windows)
+
+    assert [item.bucket_start for item in anomalies] == [
+        base_time + timedelta(seconds=30),
+    ]
+    assert all("active anomaly period" not in item.reason for item in anomalies)
 
 
 def test_detection_service_infers_type_without_label_leakage():
