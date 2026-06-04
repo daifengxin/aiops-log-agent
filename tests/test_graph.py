@@ -1,9 +1,11 @@
+from datetime import datetime, timezone
+
 import pytest
 
 from aiops_agent.data.generator import generate_logs
 from aiops_agent.graph.builder import build_diagnosis_graph
 from aiops_agent.graph.nodes import DiagnosisGraphNodes
-from aiops_agent.models.schemas import RetrievedChunk
+from aiops_agent.models.schemas import DetectedAnomaly, RetrievedChunk
 from aiops_agent.services.diagnosis_service import DiagnosisService
 from aiops_agent.services.llm_service import GeminiLLMService
 
@@ -103,6 +105,40 @@ def test_alert_suppression_state_persists_within_compiled_graph(monkeypatch):
 
     assert first["alert_decision"]["suppressed"] is False
     assert second["alert_decision"]["suppressed"] is True
+
+
+def test_suppress_alerts_uses_latest_detected_anomaly():
+    nodes = DiagnosisGraphNodes(
+        llm_service=FakeLLMService(),
+        rag_service=FakeRAGService(),
+    )
+    first = DetectedAnomaly(
+        service="api-gateway",
+        window_seconds=10,
+        bucket_start=datetime(2026, 6, 5, 9, 0, tzinfo=timezone.utc),
+        score=3.1,
+        metric_name="latency_p95",
+        anomaly_type="latency_spike",
+        reason="first",
+    )
+    latest = DetectedAnomaly(
+        service="api-gateway",
+        window_seconds=10,
+        bucket_start=datetime(2026, 6, 5, 9, 5, tzinfo=timezone.utc),
+        score=3.8,
+        metric_name="latency_p95",
+        anomaly_type="latency_spike",
+        reason="latest",
+    )
+
+    result = nodes.suppress_alerts(
+        {
+            "detected_anomalies": [first, latest],
+            "llm_report": {"likely_root_causes": ["pod_cpu_saturation"]},
+        }
+    )
+
+    assert result["alert_decision"]["bucket_start"] == latest.bucket_start
 
 
 def test_suppress_alerts_without_anomaly_does_not_mark_suppressed():

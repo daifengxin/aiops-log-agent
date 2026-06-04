@@ -4,6 +4,7 @@ from langgraph.graph import END, StateGraph
 
 from aiops_agent.graph.nodes import DiagnosisGraphNodes
 from aiops_agent.graph.state import AIOpsDiagnosisState
+from aiops_agent.services.detection_service import DetectionService
 from aiops_agent.services.llm_service import GeminiLLMService
 from aiops_agent.services.rag_service import RAGService
 
@@ -12,10 +13,15 @@ def build_diagnosis_graph(
     *,
     llm_service: GeminiLLMService | None = None,
     rag_service: RAGService | None = None,
+    detection_service: DetectionService | None = None,
 ):
     """编译 AIOps 诊断工作流；传入 fake LLM 时不会创建真实 Gemini 客户端。"""
 
-    nodes = DiagnosisGraphNodes(llm_service=llm_service, rag_service=rag_service)
+    nodes = DiagnosisGraphNodes(
+        llm_service=llm_service,
+        rag_service=rag_service,
+        detection_service=detection_service,
+    )
     graph = StateGraph(AIOpsDiagnosisState)
     graph.add_node("detect", nodes.detect)
     graph.add_node("build_rag_query", nodes.build_rag_query)

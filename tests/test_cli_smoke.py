@@ -1,4 +1,5 @@
 import json
+import asyncio
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -92,3 +93,55 @@ def test_jsonable_preserves_command_buckets_and_serializes_runtime_types():
     assert payload["review_commands"][0]["level"] == "CAUTION"
     assert payload["blocked_commands"][0]["level"] == "DANGER"
     assert payload["report_path"] == "reports/evaluation.md"
+
+
+def test_api_reuses_compiled_graph_between_requests(monkeypatch):
+    import aiops_agent.interfaces.api as api
+
+    calls = 0
+    fake_graph = object()
+
+    def fake_build_graph():
+        nonlocal calls
+        calls += 1
+        return fake_graph
+
+    monkeypatch.setattr(api, "_diagnosis_graph", None, raising=False)
+    monkeypatch.setattr(api, "build_diagnosis_graph", fake_build_graph)
+
+    assert api._get_graph() is fake_graph
+    assert api._get_graph() is fake_graph
+    assert calls == 1
+
+
+def test_stream_file_builds_graph_with_window_seconds(monkeypatch, tmp_path, capsys):
+    from aiops_agent.interfaces import stream
+
+    captured: dict[str, int] = {}
+
+    class FakeLogService:
+        def read_jsonl(self, path):
+            return [object() for _ in range(20)]
+
+    class FakeGraph:
+        def invoke(self, state):
+            return {"alert_decision": {"suppressed": False}}
+
+    def fake_build_graph(*, detection_service=None):
+        captured["window_seconds"] = detection_service.config.window_seconds
+        return FakeGraph()
+
+    monkeypatch.setattr(stream, "LogService", FakeLogService)
+    monkeypatch.setattr(stream, "build_diagnosis_graph", fake_build_graph)
+
+    asyncio.run(
+        stream.stream_file(
+            tmp_path / "logs.jsonl",
+            emit_interval=0,
+            batch_size=20,
+            window_seconds=60,
+        )
+    )
+
+    assert captured["window_seconds"] == 60
+    assert json.loads(capsys.readouterr().out)["records_seen"] == 20

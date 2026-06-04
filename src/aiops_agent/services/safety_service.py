@@ -26,6 +26,7 @@ class CommandSafetyService:
             _rule(r"\bchmod\s+777\b", "DANGER", "包含 chmod 777 高风险权限变更。"),
             _rule(r"\bdd\s+if=", "DANGER", "包含 dd if= 块设备写入风险命令。"),
             _rule(r":\s*\(\s*\)\s*\{\s*:\s*\|\s*:\s*&\s*\}\s*;\s*:", "DANGER", "包含 fork bomb。"),
+            _rule(r"\|\s*(?:sudo\s+)?(?:sh|bash)\b", "DANGER", "包含管道执行 shell 的高风险链式命令。"),
             _rule(r"(?:;|&&|\|\|?|`|\$\()\s*(?:sudo\s+)?rm\b", "DANGER", "包含 shell 注入 rm 命令。"),
             _rule(r"(?:;|&&|\|\|?|`|\$\()\s*(?:sudo\s+)?dd\b", "DANGER", "包含 shell 注入 dd 命令。"),
             _rule(r"(?:;|&&|\|\|?|`|\$\()\s*kubectl\s+delete\b", "DANGER", "包含 shell 注入 kubectl delete。"),
@@ -35,6 +36,7 @@ class CommandSafetyService:
             _rule(r"\bkubectl\s+scale\b", "CAUTION", "包含副本数调整操作。"),
             _rule(r"\bsystemctl\s+restart\b", "CAUTION", "包含 systemctl restart 操作。"),
             _rule(r"(?:^|[;&|]\s*)kill\b", "CAUTION", "包含 kill 进程操作。"),
+            _rule(r"(?:;|&&|\|\|?|\$\(|`)", "CAUTION", "包含 shell 组合执行，需要人工复核。"),
         ]
         self._safe_rules = [
             _rule(r"^\s*kubectl\s+get\b", "SAFE", "只读取 Kubernetes 资源列表。"),
