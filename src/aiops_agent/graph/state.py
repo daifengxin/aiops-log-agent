@@ -17,6 +17,7 @@ class AIOpsDiagnosisState(TypedDict, total=False):
     retrieved_chunks: list[RetrievedChunk]
     llm_report: dict[str, Any]
     safe_commands: list[SafetyResult]
+    review_commands: list[SafetyResult]
     blocked_commands: list[SafetyResult]
     alert_decision: dict[str, Any]
     errors: list[str]
