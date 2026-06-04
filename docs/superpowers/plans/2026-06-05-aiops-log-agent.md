@@ -90,6 +90,24 @@ def test_settings_loads_env_from_explicit_project_root(tmp_path, monkeypatch):
     assert settings.gemini_model == "custom-model"
 
 
+def test_settings_does_not_leak_dotenv_values_between_roots(tmp_path, monkeypatch):
+    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+    monkeypatch.delenv("GEMINI_MODEL", raising=False)
+    first = tmp_path / "first"
+    second = tmp_path / "second"
+    first.mkdir()
+    second.mkdir()
+    (first / ".env").write_text("GEMINI_API_KEY=first-key\n", encoding="utf-8")
+    (second / ".env").write_text("GEMINI_MODEL=second-model\n", encoding="utf-8")
+
+    first_settings = Settings.from_env(project_root=first)
+    second_settings = Settings.from_env(project_root=second)
+
+    assert first_settings.gemini_api_key == "first-key"
+    assert second_settings.gemini_api_key is None
+    assert second_settings.gemini_model == "second-model"
+
+
 def test_settings_ensure_dirs_creates_expected_directories(tmp_path, monkeypatch):
     monkeypatch.delenv("GEMINI_API_KEY", raising=False)
     monkeypatch.delenv("GEMINI_MODEL", raising=False)
@@ -192,7 +210,7 @@ import os
 from dataclasses import dataclass
 from pathlib import Path
 
-from dotenv import load_dotenv
+from dotenv import dotenv_values
 
 
 @dataclass(frozen=True)
@@ -211,8 +229,9 @@ class Settings:
 
     @classmethod
     def from_env(cls, project_root: Path | None = None) -> "Settings":
+        """从真实环境变量和项目本地 .env 构造配置，且不污染全局环境。"""
         root = project_root or Path.cwd()
-        load_dotenv(root / ".env")
+        dotenv_config = dotenv_values(root / ".env")
         data_dir = root / "data"
         return cls(
             project_root=root,
@@ -222,13 +241,19 @@ class Settings:
             eval_dir=data_dir / "eval",
             reports_dir=root / "reports",
             figures_dir=root / "reports" / "figures",
-            gemini_api_key=os.getenv("GEMINI_API_KEY"),
-            gemini_model=os.getenv("GEMINI_MODEL", "gemini-3.5-flash"),
+            gemini_api_key=_env_value("GEMINI_API_KEY", dotenv_config),
+            gemini_model=_env_value("GEMINI_MODEL", dotenv_config) or "gemini-3.5-flash",
         )
 
     def ensure_dirs(self) -> None:
+        """创建运行时目录，供数据、RAG、评测和图表输出使用。"""
         for path in [self.logs_dir, self.rag_dir, self.eval_dir, self.figures_dir]:
             path.mkdir(parents=True, exist_ok=True)
+
+
+def _env_value(key: str, dotenv_config: dict[str, str | None]) -> str | None:
+    """真实环境变量优先，其次使用项目 .env 文件中的值。"""
+    return os.getenv(key) or dotenv_config.get(key)
 ```
 
 - [ ] **Step 5: Run the config test**
