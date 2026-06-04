@@ -1,6 +1,10 @@
+import pytest
+
 from aiops_agent.evaluation.rag_eval import evaluate_chunking_strategies, rag_test_queries
+from aiops_agent.models.schemas import TextChunk
 from aiops_agent.rag.chunkers import fixed_char_chunks, semantic_chunks
 from aiops_agent.rag.k8s_loader import load_curated_k8s_docs
+from aiops_agent.rag.vector_store import SimpleVectorStore, _chroma_result_to_chunks
 
 
 def test_k8s_docs_have_operational_topics():
@@ -23,10 +27,50 @@ def test_semantic_chunker_preserves_code_blocks():
     chunks = semantic_chunks(docs, target_size=80, overlap=10)
 
     assert any("kubectl get pods -A" in chunk.text for chunk in chunks)
-    assert all(
-        "```bash" in chunk.text and "```" in chunk.text or "```bash" not in chunk.text
-        for chunk in chunks
+    assert all(chunk.text.count("```") in {0, 2} for chunk in chunks)
+
+
+def test_fixed_char_chunks_skips_pure_overlap_tail():
+    docs = [{"title": "Exact", "source": "local", "text": "abcdefghij"}]
+
+    chunks = fixed_char_chunks(docs, chunk_size=10, overlap=2)
+
+    assert [chunk.text for chunk in chunks] == ["abcdefghij"]
+
+
+def test_fixed_char_chunks_rejects_overlap_not_smaller_than_chunk_size():
+    docs = [{"title": "Bad", "source": "local", "text": "abcdef"}]
+
+    with pytest.raises(ValueError, match="overlap must be smaller"):
+        fixed_char_chunks(docs, chunk_size=4, overlap=4)
+
+
+def test_simple_vector_store_tie_break_keeps_original_order():
+    chunks = [
+        TextChunk(chunk_id="first", title="Alpha", text="aaa", source="local"),
+        TextChunk(chunk_id="second", title="Zulu", text="bbb", source="local"),
+    ]
+    store = SimpleVectorStore(chunks)
+
+    retrieved = store.query("unmatched", top_k=2)
+
+    assert [item.chunk_id for item in retrieved] == ["first", "second"]
+
+
+def test_chroma_cosine_distance_conversion_is_non_negative():
+    rows = _chroma_result_to_chunks(
+        {
+            "ids": [["chunk-1", "chunk-2"]],
+            "documents": [["same direction", "opposite direction"]],
+            "metadatas": [[
+                {"title": "One", "source": "local"},
+                {"title": "Two", "source": "local"},
+            ]],
+            "distances": [[0.25, 1.25]],
+        }
     )
+
+    assert [row.score for row in rows] == [0.75, 0.0]
 
 
 def test_rag_eval_returns_recall_for_two_strategies():

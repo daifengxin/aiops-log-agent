@@ -8,6 +8,8 @@ from typing import Any
 
 from aiops_agent.models.schemas import RetrievedChunk, TextChunk
 
+CHROMA_COLLECTION_METADATA = {"hnsw:space": "cosine"}
+
 
 class ChromaVectorStore:
     """ChromaDB 主检索路径；重依赖只在实例化时加载。"""
@@ -27,7 +29,10 @@ class ChromaVectorStore:
 
         self.model = SentenceTransformer(model_name)
         self.client = chromadb.PersistentClient(path=str(self.persist_dir))
-        self.collection = self.client.get_or_create_collection(collection_name)
+        self.collection = self.client.get_or_create_collection(
+            collection_name,
+            metadata=CHROMA_COLLECTION_METADATA,
+        )
 
     def rebuild(self, chunks: list[TextChunk]) -> None:
         if self.collection.count():
@@ -72,11 +77,11 @@ class SimpleVectorStore:
             return []
 
         query_vector = _vectorize(query_text)
-        scored: list[tuple[float, TextChunk]] = []
-        for chunk, vector in zip(self.chunks, self.vectors, strict=True):
-            scored.append((_cosine(query_vector, vector), chunk))
+        scored: list[tuple[float, int, TextChunk]] = []
+        for index, (chunk, vector) in enumerate(zip(self.chunks, self.vectors, strict=True)):
+            scored.append((_cosine(query_vector, vector), index, chunk))
 
-        scored.sort(key=lambda item: (item[0], item[1].title), reverse=True)
+        scored.sort(key=lambda item: (-item[0], item[1]))
         return [
             RetrievedChunk(
                 chunk_id=chunk.chunk_id,
@@ -85,7 +90,7 @@ class SimpleVectorStore:
                 source=chunk.source,
                 score=round(score, 4),
             )
-            for score, chunk in scored[:top_k]
+            for score, _, chunk in scored[:top_k]
         ]
 
 
@@ -103,13 +108,15 @@ def _chroma_result_to_chunks(result: dict[str, Any]) -> list[RetrievedChunk]:
         distances,
         strict=True,
     ):
+        # Chroma collection 使用 cosine space；distance 越小越相似，分数裁剪到非负便于展示。
+        score = max(0.0, 1.0 - float(distance))
         rows.append(
             RetrievedChunk(
                 chunk_id=str(chunk_id),
                 title=str(metadata["title"]),
                 text=str(text),
                 source=str(metadata["source"]),
-                score=round(1.0 - float(distance), 4),
+                score=round(score, 4),
             )
         )
     return rows
