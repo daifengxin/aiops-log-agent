@@ -217,7 +217,7 @@ Expected: PASS.
 
 ```bash
 git add pyproject.toml requirements.txt .gitignore .env.example src/aiops_agent/__init__.py src/aiops_agent/config.py tests/test_config.py
-git commit -m "chore: scaffold project config"
+git commit -m "chore(config): scaffold project config"
 ```
 
 ## Task 2: Data Schemas And Synthetic Log Generator
@@ -485,7 +485,7 @@ Expected: PASS.
 
 ```bash
 git add src/aiops_agent/data tests/test_data_generator.py
-git commit -m "feat: add synthetic log generator"
+git commit -m "feat(data): add synthetic log generator"
 ```
 
 ## Task 3: Detection Core And Detection Service
@@ -773,7 +773,7 @@ Expected: PASS.
 
 ```bash
 git add src/aiops_agent/detection src/aiops_agent/services tests/test_detection.py
-git commit -m "feat: add statistical detection service"
+git commit -m "feat(detection): add statistical detection service"
 ```
 
 ## Task 4: Evaluation Metrics And Anomaly Parameter Grid
@@ -943,7 +943,7 @@ Expected: PASS.
 
 ```bash
 git add src/aiops_agent/evaluation tests/test_anomaly_eval.py
-git commit -m "feat: add anomaly evaluation grid"
+git commit -m "feat(evaluation): add anomaly evaluation grid"
 ```
 
 ## Task 5: Command Safety And Alert Suppression
@@ -1150,7 +1150,7 @@ Expected: PASS.
 
 ```bash
 git add src/aiops_agent/services/safety_service.py src/aiops_agent/services/alert_service.py src/aiops_agent/evaluation/safety_eval.py tests/test_safety_alerting.py
-git commit -m "feat: add safety grading and alert suppression"
+git commit -m "feat(safety): add safety grading and alert suppression"
 ```
 
 ## Task 6: Kubernetes RAG Corpus, Chunking, Retrieval, And Recall@5
@@ -1535,7 +1535,7 @@ Expected: PASS.
 
 ```bash
 git add src/aiops_agent/rag src/aiops_agent/services/rag_service.py src/aiops_agent/evaluation/rag_eval.py tests/test_rag.py
-git commit -m "feat: add Kubernetes rag evaluation"
+git commit -m "feat(rag): add Kubernetes rag evaluation"
 ```
 
 ## Task 7: Gemini Diagnosis Service And LangGraph Workflow
@@ -1808,7 +1808,7 @@ Expected: PASS.
 
 ```bash
 git add src/aiops_agent/services/llm_service.py src/aiops_agent/services/diagnosis_service.py src/aiops_agent/graph tests/test_graph.py
-git commit -m "feat: add LangGraph diagnosis workflow"
+git commit -m "feat(graph): add LangGraph diagnosis workflow"
 ```
 
 ## Task 8: CLI, API, And Streaming Interfaces
@@ -2043,7 +2043,7 @@ Expected: PASS.
 
 ```bash
 git add pyproject.toml src/aiops_agent/interfaces tests/test_cli_smoke.py
-git commit -m "feat: add cli api and stream interfaces"
+git commit -m "feat(interface): add cli api and stream interfaces"
 ```
 
 ## Task 9: Report Writer And Full Evaluation Command
@@ -2175,7 +2175,7 @@ Expected: PASS.
 
 ```bash
 git add src/aiops_agent/evaluation/report_writer.py tests/test_report_writer.py
-git commit -m "feat: add evaluation report writer"
+git commit -m "feat(report): add evaluation report writer"
 ```
 
 ## Task 10: Documentation, Local Environment, And Final Verification
@@ -2300,7 +2300,7 @@ Expected:
 
 ```bash
 git add README.md .env.example
-git commit -m "docs: add usage and evaluation guide"
+git commit -m "docs(readme): add usage and evaluation guide"
 ```
 
 ## Self-Review Checklist
