@@ -1,11 +1,14 @@
 from __future__ import annotations
 
+from datetime import datetime
+
 from aiops_agent.detection.windows import aggregate_windows
 from aiops_agent.evaluation.metrics import classification_metrics
-from aiops_agent.models.schemas import LogRecord, WindowMetric
+from aiops_agent.models.schemas import DetectedAnomaly, LogRecord, WindowMetric
 from aiops_agent.services.detection_service import DetectionConfig, DetectionService
 
 TARGET_ANOMALY_TYPES = ("latency_spike", "transaction_conflict")
+WindowKey = tuple[str, int, datetime]
 
 
 def evaluate_parameter_grid(
@@ -19,10 +22,15 @@ def evaluate_parameter_grid(
 
     for alpha in alphas:
         for threshold in thresholds:
-            metrics = _evaluate_windows(
+            predicted_keys = _detected_window_keys(
                 windows=windows,
                 alpha=alpha,
                 threshold=threshold,
+                window_seconds=window_seconds,
+            )
+            metrics = _metrics_for_windows(
+                windows=windows,
+                predicted_keys=predicted_keys,
                 anomaly_type=None,
             )
             rows.append(
@@ -46,11 +54,16 @@ def evaluate_windows_by_type(
 
     for window_seconds in windows:
         window_metrics = aggregate_windows(records, window_seconds)
+        predicted_keys = _detected_window_keys(
+            windows=window_metrics,
+            alpha=alpha,
+            threshold=threshold,
+            window_seconds=window_seconds,
+        )
         for anomaly_type in TARGET_ANOMALY_TYPES:
-            metrics = _evaluate_windows(
+            metrics = _metrics_for_windows(
                 windows=window_metrics,
-                alpha=alpha,
-                threshold=threshold,
+                predicted_keys=predicted_keys,
                 anomaly_type=anomaly_type,
             )
             rows.append(
@@ -66,33 +79,37 @@ def evaluate_windows_by_type(
     return rows
 
 
-def _evaluate_windows(
+def _detected_window_keys(
     windows: list[WindowMetric],
     alpha: float,
     threshold: float,
-    anomaly_type: str | None,
-) -> dict[str, float]:
-    if not windows:
-        return classification_metrics(true_labels=[], pred_labels=[])
-
+    window_seconds: int,
+) -> set[WindowKey]:
+    # 即使没有聚合窗口，也先构造配置，保证参数校验语义一致。
     config = DetectionConfig(
         alpha=alpha,
         z_threshold=threshold,
-        window_seconds=windows[0].window_seconds,
+        window_seconds=window_seconds,
     )
-    anomalies = DetectionService(config=config).detect_from_windows(windows)
+    if not windows:
+        return set()
 
-    # 类型行评估的是对应真值类型的窗口级覆盖率，预测侧使用全部已检测窗口。
-    predicted_keys = {
-        (item.service, item.bucket_start)
-        for item in anomalies
-    }
+    anomalies = DetectionService(config=config).detect_from_windows(windows)
+    return {_detected_window_key(item) for item in anomalies}
+
+
+def _metrics_for_windows(
+    windows: list[WindowMetric],
+    predicted_keys: set[WindowKey],
+    anomaly_type: str | None,
+) -> dict[str, float]:
+    # 类型行评估的是对应真值类型的窗口级覆盖率，预测侧复用全部已检测窗口。
     true_labels = [
         _is_target_window(window, anomaly_type)
         for window in windows
     ]
     pred_labels = [
-        (window.service, window.bucket_start) in predicted_keys
+        _window_key(window) in predicted_keys
         for window in windows
     ]
 
@@ -103,3 +120,11 @@ def _is_target_window(window: WindowMetric, anomaly_type: str | None) -> bool:
     if anomaly_type is None:
         return window.is_anomaly
     return anomaly_type in window.anomaly_types
+
+
+def _window_key(window: WindowMetric) -> WindowKey:
+    return (window.service, window.window_seconds, window.bucket_start)
+
+
+def _detected_window_key(anomaly: DetectedAnomaly) -> WindowKey:
+    return (anomaly.service, anomaly.window_seconds, anomaly.bucket_start)
