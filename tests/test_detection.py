@@ -118,6 +118,65 @@ def test_detection_service_finds_known_anomalies():
     assert {item.anomaly_type for item in anomalies} & {"latency_spike", "transaction_conflict", "queue_backlog"}
 
 
+def test_detection_service_does_not_alert_on_latency_drop_recovery():
+    from aiops_agent.models.schemas import WindowMetric
+
+    base_time = datetime(2026, 6, 5, 9, 0, tzinfo=timezone.utc)
+    windows = [
+        WindowMetric(
+            service="api-gateway",
+            window_seconds=10,
+            bucket_start=base_time,
+            latency_mean=500.0,
+            latency_p95=500.0,
+            error_rate=0.0,
+            queue_depth_mean=10.0,
+            is_anomaly=False,
+            anomaly_types=(),
+        ),
+        WindowMetric(
+            service="api-gateway",
+            window_seconds=10,
+            bucket_start=base_time.replace(second=10),
+            latency_mean=500.0,
+            latency_p95=500.0,
+            error_rate=0.0,
+            queue_depth_mean=10.0,
+            is_anomaly=False,
+            anomaly_types=(),
+        ),
+        WindowMetric(
+            service="api-gateway",
+            window_seconds=10,
+            bucket_start=base_time.replace(second=20),
+            latency_mean=500.0,
+            latency_p95=500.0,
+            error_rate=0.0,
+            queue_depth_mean=10.0,
+            is_anomaly=False,
+            anomaly_types=(),
+        ),
+        WindowMetric(
+            service="api-gateway",
+            window_seconds=10,
+            bucket_start=base_time.replace(second=30),
+            latency_mean=100.0,
+            latency_p95=100.0,
+            error_rate=0.0,
+            queue_depth_mean=10.0,
+            is_anomaly=False,
+            anomaly_types=(),
+        ),
+    ]
+
+    anomalies = DetectionService(
+        DetectionConfig(alpha=0.2, z_threshold=2.0, window_seconds=10)
+    ).detect_from_windows(windows)
+
+    assert anomalies == []
+    assert all("exceeded EWMA baseline" not in item.reason for item in anomalies)
+
+
 def test_detection_config_validates_thresholds():
     with pytest.raises(ValueError):
         DetectionConfig(alpha=0.0)
@@ -161,3 +220,16 @@ def test_log_service_read_jsonl_limit_and_false_string(tmp_path):
 
     assert len(limited) == 1
     assert records[1].is_anomaly is False
+
+
+@pytest.mark.parametrize("invalid_value", ["0", "yes", 1])
+def test_log_service_read_jsonl_rejects_invalid_bool_values(tmp_path, invalid_value):
+    record = _record(timestamp=datetime(2026, 6, 5, 9, 0, tzinfo=timezone.utc))
+    path = tmp_path / "logs.jsonl"
+    path.write_text(
+        json.dumps(record.to_json_dict() | {"is_anomaly": invalid_value}),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError):
+        LogService().read_jsonl(path)

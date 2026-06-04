@@ -344,10 +344,14 @@ from typing import Any
 from pydantic import BaseModel, ConfigDict, StrictBool
 
 
-class LogRecord(BaseModel):
-    """单条微服务日志，包含检测指标和人工标注字段。"""
+class FrozenModel(BaseModel):
+    """所有 DTO 默认不可变且拒绝未知字段，避免输入悄悄漂移。"""
 
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+
+class LogRecord(FrozenModel):
+    """单条微服务日志，包含检测指标和人工标注字段。"""
 
     timestamp: datetime
     service: str
@@ -369,10 +373,8 @@ class LogRecord(BaseModel):
         return row
 
 
-class WindowMetric(BaseModel):
+class WindowMetric(FrozenModel):
     """聚合后的时间窗口指标。"""
-
-    model_config = ConfigDict(frozen=True)
 
     service: str
     window_seconds: int
@@ -385,10 +387,8 @@ class WindowMetric(BaseModel):
     anomaly_types: tuple[str, ...]
 
 
-class DetectedAnomaly(BaseModel):
+class DetectedAnomaly(FrozenModel):
     """检测器输出的异常窗口。"""
-
-    model_config = ConfigDict(frozen=True)
 
     service: str
     window_seconds: int
@@ -399,10 +399,8 @@ class DetectedAnomaly(BaseModel):
     reason: str
 
 
-class RetrievedChunk(BaseModel):
+class RetrievedChunk(FrozenModel):
     """RAG 检索返回的文档片段。"""
-
-    model_config = ConfigDict(frozen=True)
 
     chunk_id: str
     title: str
@@ -411,10 +409,8 @@ class RetrievedChunk(BaseModel):
     score: float
 
 
-class SafetyResult(BaseModel):
+class SafetyResult(FrozenModel):
     """命令安全分级结果。"""
-
-    model_config = ConfigDict(frozen=True)
 
     command: str
     level: str
@@ -643,19 +639,27 @@ Create `src/aiops_agent/detection/zscore.py`:
 ```python
 from __future__ import annotations
 
-import statistics
+import numpy as np
 
 
 def z_scores(values: list[float]) -> list[float]:
-    """基于样本标准差计算绝对 Z-Score，用于识别偏离基线的窗口。"""
+    """基于历史值计算绝对 z-score，用于突出相对近期基线的尖峰。"""
+
     if len(values) < 2:
         return [0.0 for _ in values]
 
-    mean = statistics.mean(values)
-    stdev = statistics.stdev(values)
-    if stdev == 0:
-        return [0.0 for _ in values]
-    return [abs((float(value) - mean) / stdev) for value in values]
+    scores = [0.0]
+    for index in range(1, len(values)):
+        history = np.array(values[:index], dtype=float)
+        std = float(np.std(history))
+        mean = float(np.mean(history))
+        if std == 0.0:
+            # 历史完全平坦时没有可用方差；非零偏移直接用绝对偏移量标记尖峰。
+            scores.append(abs(float(values[index]) - mean))
+            continue
+
+        scores.append(abs((float(values[index]) - mean) / std))
+    return scores
 ```
 
 - [ ] **Step 4: Implement window aggregation**
@@ -729,9 +733,12 @@ class LogService:
     def read_jsonl(self, path: Path, limit: int | None = None) -> list[LogRecord]:
         records: list[LogRecord] = []
         with path.open("r", encoding="utf-8") as handle:
-            for index, line in enumerate(handle):
-                if limit is not None and index >= limit:
+            for line in handle:
+                if limit is not None and len(records) >= limit:
                     break
+                if not line.strip():
+                    continue
+
                 row = json.loads(line)
                 records.append(
                     LogRecord(
@@ -747,10 +754,23 @@ class LogService:
                         queue_depth=int(row["queue_depth"]),
                         dependency=row["dependency"],
                         anomaly_type=row["anomaly_type"],
-                        is_anomaly=bool(row["is_anomaly"]),
+                        is_anomaly=_parse_bool(row["is_anomaly"]),
                     )
                 )
         return records
+
+
+def _parse_bool(value: object) -> bool:
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        normalized = value.strip().lower()
+        if normalized == "true":
+            return True
+        if normalized == "false":
+            return False
+
+    raise ValueError(f"is_anomaly must be a boolean value, got {value!r}")
 ```
 
 Create `src/aiops_agent/services/detection_service.py`:
@@ -758,8 +778,8 @@ Create `src/aiops_agent/services/detection_service.py`:
 ```python
 from __future__ import annotations
 
+from collections import defaultdict
 from dataclasses import dataclass, field
-from datetime import datetime
 
 from aiops_agent.models.schemas import DetectedAnomaly, LogRecord, WindowMetric
 from aiops_agent.detection.ewma import ewma
@@ -773,10 +793,18 @@ class DetectionConfig:
     z_threshold: float = 2.5
     window_seconds: int = 10
 
+    def __post_init__(self) -> None:
+        if not 0 < self.alpha <= 1:
+            raise ValueError("alpha must be greater than 0 and less than or equal to 1")
+        if self.z_threshold <= 0:
+            raise ValueError("z_threshold must be greater than 0")
+        if self.window_seconds <= 0:
+            raise ValueError("window_seconds must be greater than 0")
+
 
 @dataclass
 class DetectionService:
-    config: DetectionConfig
+    config: DetectionConfig = field(default_factory=DetectionConfig)
     _stream_buffer: list[LogRecord] = field(default_factory=list)
 
     def detect(self, records: list[LogRecord]) -> list[DetectedAnomaly]:
@@ -784,47 +812,57 @@ class DetectionService:
         return self.detect_from_windows(windows)
 
     def detect_from_windows(self, windows: list[WindowMetric]) -> list[DetectedAnomaly]:
-        anomalies: list[DetectedAnomaly] = []
-        by_service: dict[str, list[WindowMetric]] = {}
+        by_service: dict[str, list[WindowMetric]] = defaultdict(list)
         for window in windows:
-            by_service.setdefault(window.service, []).append(window)
+            by_service[window.service].append(window)
 
-        for service, service_windows in by_service.items():
-            values = [window.latency_p95 for window in service_windows]
-            baseline = ewma(values, self.config.alpha)
-            residuals = [value - base for value, base in zip(values, baseline)]
+        anomalies: list[DetectedAnomaly] = []
+        for service_windows in by_service.values():
+            ordered = sorted(service_windows, key=lambda item: item.bucket_start)
+            latencies = [window.latency_p95 for window in ordered]
+            baseline = ewma(latencies, self.config.alpha)
+            residuals = [
+                latency - expected
+                for latency, expected in zip(latencies, baseline, strict=True)
+            ]
             scores = z_scores(residuals)
 
-            for window, score in zip(service_windows, scores):
-                if score >= self.config.z_threshold:
-                    anomalies.append(
-                        DetectedAnomaly(
-                            service=service,
-                            window_seconds=window.window_seconds,
-                            bucket_start=window.bucket_start,
-                            score=round(score, 4),
-                            metric_name="latency_p95_residual",
-                            anomaly_type=_infer_anomaly_type(window),
-                            reason=f"z_score={score:.2f} >= threshold={self.config.z_threshold}",
-                        )
-                    )
-        return anomalies
+            for window, score, expected in zip(ordered, scores, baseline, strict=True):
+                # 延迟异常只关心高于基线的尖峰，恢复/下降窗口不应触发报警。
+                if window.latency_p95 <= expected or score < self.config.z_threshold:
+                    continue
 
-    def incremental_detect(self, new_records: list[LogRecord], flush_at: datetime | None = None) -> list[DetectedAnomaly]:
+                anomalies.append(
+                    DetectedAnomaly(
+                        service=window.service,
+                        window_seconds=window.window_seconds,
+                        bucket_start=window.bucket_start,
+                        score=float(score),
+                        metric_name="latency_p95",
+                        anomaly_type=self._infer_anomaly_type(window),
+                        reason=(
+                            f"latency_p95={window.latency_p95:.2f} exceeded "
+                            f"EWMA baseline={expected:.2f}"
+                        ),
+                    )
+                )
+        return sorted(anomalies, key=lambda item: (item.bucket_start, item.service))
+
+    def incremental_detect(self, new_records: list[LogRecord], flush_at: object | None = None) -> list[DetectedAnomaly]:
+        """追加新日志并基于完整缓冲区重算，flush_at 仅保留给后续流式切窗。"""
+
+        _ = flush_at
         self._stream_buffer.extend(new_records)
-        if not self._stream_buffer:
-            return []
         return self.detect(self._stream_buffer)
 
-
-def _infer_anomaly_type(window: WindowMetric) -> str:
-    if window.anomaly_types:
-        return window.anomaly_types[0]
-    if window.queue_depth_mean > 120:
-        return "queue_backlog"
-    if window.error_rate > 0.2:
-        return "transaction_conflict"
-    return "latency_spike"
+    def _infer_anomaly_type(self, window: WindowMetric) -> str:
+        if window.anomaly_types:
+            return window.anomaly_types[0]
+        if window.queue_depth_mean >= 100.0:
+            return "queue_backlog"
+        if window.error_rate >= 0.2:
+            return "transaction_conflict"
+        return "latency_spike"
 ```
 
 - [ ] **Step 6: Run detection tests**

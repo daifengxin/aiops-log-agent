@@ -45,6 +45,73 @@ def test_schema_models_live_under_models_and_are_pydantic():
     for model in (LogRecord, WindowMetric, DetectedAnomaly, RetrievedChunk, SafetyResult):
         assert issubclass(model, BaseModel)
         assert model.model_config.get("frozen") is True
+        assert model.model_config.get("extra") == "forbid"
+
+
+def test_schema_models_reject_unknown_fields():
+    from aiops_agent.models.schemas import (
+        DetectedAnomaly,
+        LogRecord,
+        RetrievedChunk,
+        SafetyResult,
+        WindowMetric,
+    )
+
+    timestamp = datetime(2026, 6, 5, 9, 0, tzinfo=timezone.utc)
+    samples = [
+        (
+            LogRecord,
+            generate_logs(seed=3, per_service=1)[0].to_json_dict(),
+        ),
+        (
+            WindowMetric,
+            {
+                "service": "api-gateway",
+                "window_seconds": 10,
+                "bucket_start": timestamp,
+                "latency_mean": 100.0,
+                "latency_p95": 120.0,
+                "error_rate": 0.0,
+                "queue_depth_mean": 10.0,
+                "is_anomaly": False,
+                "anomaly_types": (),
+            },
+        ),
+        (
+            DetectedAnomaly,
+            {
+                "service": "api-gateway",
+                "window_seconds": 10,
+                "bucket_start": timestamp,
+                "score": 3.0,
+                "metric_name": "latency_p95",
+                "anomaly_type": "latency_spike",
+                "reason": "test",
+            },
+        ),
+        (
+            RetrievedChunk,
+            {
+                "chunk_id": "chunk-1",
+                "title": "Runbook",
+                "text": "Check pod CPU.",
+                "source": "k8s",
+                "score": 0.9,
+            },
+        ),
+        (
+            SafetyResult,
+            {
+                "command": "kubectl get pods",
+                "level": "SAFE",
+                "reason": "read only",
+            },
+        ),
+    ]
+
+    for model, payload in samples:
+        with pytest.raises(ValidationError):
+            model(**(payload | {"unexpected": "value"}))
 
 
 def test_generate_logs_has_required_volume_and_labels():

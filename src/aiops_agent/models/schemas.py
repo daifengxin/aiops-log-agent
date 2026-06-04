@@ -6,10 +6,14 @@ from typing import Any
 from pydantic import BaseModel, ConfigDict, StrictBool
 
 
-class LogRecord(BaseModel):
-    """单条微服务日志，包含检测指标和人工标注字段。"""
+class FrozenModel(BaseModel):
+    """所有 DTO 默认不可变且拒绝未知字段，避免输入悄悄漂移。"""
 
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+
+class LogRecord(FrozenModel):
+    """单条微服务日志，包含检测指标和人工标注字段。"""
 
     timestamp: datetime
     service: str
@@ -31,10 +35,8 @@ class LogRecord(BaseModel):
         return row
 
 
-class WindowMetric(BaseModel):
+class WindowMetric(FrozenModel):
     """聚合后的时间窗口指标。"""
-
-    model_config = ConfigDict(frozen=True)
 
     service: str
     window_seconds: int
@@ -47,10 +49,8 @@ class WindowMetric(BaseModel):
     anomaly_types: tuple[str, ...]
 
 
-class DetectedAnomaly(BaseModel):
+class DetectedAnomaly(FrozenModel):
     """检测器输出的异常窗口。"""
-
-    model_config = ConfigDict(frozen=True)
 
     service: str
     window_seconds: int
@@ -61,10 +61,8 @@ class DetectedAnomaly(BaseModel):
     reason: str
 
 
-class RetrievedChunk(BaseModel):
+class RetrievedChunk(FrozenModel):
     """RAG 检索返回的文档片段。"""
-
-    model_config = ConfigDict(frozen=True)
 
     chunk_id: str
     title: str
@@ -73,10 +71,8 @@ class RetrievedChunk(BaseModel):
     score: float
 
 
-class SafetyResult(BaseModel):
+class SafetyResult(FrozenModel):
     """命令安全分级结果。"""
-
-    model_config = ConfigDict(frozen=True)
 
     command: str
     level: str
