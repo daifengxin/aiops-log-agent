@@ -62,13 +62,13 @@
 Create `tests/test_config.py`:
 
 ```python
-from pathlib import Path
-
 from aiops_agent.config import Settings
 
 
 def test_settings_defaults_use_project_paths(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
+    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+    monkeypatch.delenv("GEMINI_MODEL", raising=False)
     settings = Settings.from_env()
 
     assert settings.project_root == tmp_path
@@ -77,6 +77,30 @@ def test_settings_defaults_use_project_paths(tmp_path, monkeypatch):
     assert settings.reports_dir == tmp_path / "reports"
     assert settings.gemini_model == "gemini-3.5-flash"
     assert settings.gemini_api_key is None
+
+
+def test_settings_loads_env_from_explicit_project_root(tmp_path, monkeypatch):
+    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+    monkeypatch.delenv("GEMINI_MODEL", raising=False)
+    (tmp_path / ".env").write_text("GEMINI_API_KEY=abc\nGEMINI_MODEL=custom-model\n", encoding="utf-8")
+
+    settings = Settings.from_env(project_root=tmp_path)
+
+    assert settings.gemini_api_key == "abc"
+    assert settings.gemini_model == "custom-model"
+
+
+def test_settings_ensure_dirs_creates_expected_directories(tmp_path, monkeypatch):
+    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+    monkeypatch.delenv("GEMINI_MODEL", raising=False)
+    settings = Settings.from_env(project_root=tmp_path)
+
+    settings.ensure_dirs()
+
+    assert settings.logs_dir.exists()
+    assert settings.rag_dir.exists()
+    assert settings.eval_dir.exists()
+    assert settings.figures_dir.exists()
 ```
 
 - [ ] **Step 2: Run the test and verify it fails**
@@ -99,7 +123,7 @@ name = "aiops-log-agent"
 version = "0.1.0"
 description = "Evaluation-first AI ops log anomaly detection agent"
 requires-python = ">=3.11"
-dependencies = []
+dependencies = ["python-dotenv>=1.0.1"]
 
 [tool.setuptools.packages.find]
 where = ["src"]
@@ -187,8 +211,8 @@ class Settings:
 
     @classmethod
     def from_env(cls, project_root: Path | None = None) -> "Settings":
-        load_dotenv()
         root = project_root or Path.cwd()
+        load_dotenv(root / ".env")
         data_dir = root / "data"
         return cls(
             project_root=root,
