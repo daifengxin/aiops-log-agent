@@ -1,0 +1,11 @@
+.env
+.venv/
+__pycache__/
+.pytest_cache/
+*.pyc
+data/logs/*.jsonl
+data/eval/*.json
+data/eval/*.csv
+data/rag/chroma/
+reports/evaluation.md
+reports/figures/
