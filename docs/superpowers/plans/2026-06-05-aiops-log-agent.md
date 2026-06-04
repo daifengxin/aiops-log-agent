@@ -565,11 +565,36 @@ git commit -m "feat(data): add synthetic log generator"
 Create `tests/test_detection.py`:
 
 ```python
+import json
+import math
+from datetime import datetime, timezone
+
+import pytest
+from pydantic import ValidationError
+
 from aiops_agent.data.generator import generate_logs
 from aiops_agent.detection.ewma import ewma
 from aiops_agent.detection.zscore import z_scores
 from aiops_agent.detection.windows import aggregate_windows
+from aiops_agent.models.schemas import WindowMetric
 from aiops_agent.services.detection_service import DetectionConfig, DetectionService
+from aiops_agent.services.log_service import LogService
+
+
+def _window(bucket_start: datetime, latency_p95: float, **overrides) -> WindowMetric:
+    payload = {
+        "service": "api-gateway",
+        "window_seconds": 10,
+        "bucket_start": bucket_start,
+        "latency_mean": latency_p95,
+        "latency_p95": latency_p95,
+        "error_rate": 0.0,
+        "queue_depth_mean": 10.0,
+        "is_anomaly": bool(overrides.get("anomaly_types", ())),
+        "anomaly_types": (),
+    }
+    payload.update(overrides)
+    return WindowMetric(**payload)
 
 
 def test_ewma_responds_to_recent_values():
@@ -599,6 +624,68 @@ def test_detection_service_finds_known_anomalies():
 
     assert anomalies
     assert {item.anomaly_type for item in anomalies} & {"latency_spike", "transaction_conflict", "queue_backlog"}
+
+
+def test_z_scores_review_regressions():
+    assert math.isfinite(z_scores([0.0, 0.0, 0.0, 100.0])[-1])
+    assert z_scores([0.0, 0.0, 0.0, 100.0])[-1] > 2.0
+    assert z_scores([0.0, 0.0, 0.0, 5.0])[-1] < 2.0
+    assert z_scores([-1.0, -1.0, -1.0, 0.0])[-1] == 0.0
+    assert z_scores([-10.0, -10.0, -10.0, -5.0])[-1] == 0.0
+
+
+def test_detection_service_bounded_pre_spike_and_active_period():
+    base_time = datetime(2026, 6, 5, 9, 0, tzinfo=timezone.utc)
+    windows = [
+        _window(base_time.replace(second=offset), latency)
+        for offset, latency in [(0, 100.0), (10, 100.0), (20, 100.0), (30, 220.0), (40, 220.0), (50, 100.0)]
+    ]
+    anomalies = DetectionService(
+        DetectionConfig(alpha=0.2, z_threshold=2.0, window_seconds=10)
+    ).detect_from_windows(windows)
+
+    assert [item.bucket_start for item in anomalies] == [
+        base_time.replace(second=30),
+        base_time.replace(second=40),
+    ]
+    assert "active anomaly period" in anomalies[1].reason
+
+
+def test_detection_service_infers_type_without_label_leakage():
+    base_time = datetime(2026, 6, 5, 9, 0, tzinfo=timezone.utc)
+    windows = [
+        _window(base_time.replace(second=offset), latency)
+        for offset, latency in [(0, 100.0), (10, 100.0), (20, 100.0)]
+    ]
+    windows.append(
+        _window(
+            base_time.replace(second=30),
+            220.0,
+            anomaly_types=("queue_backlog",),
+        )
+    )
+
+    anomalies = DetectionService(
+        DetectionConfig(alpha=0.2, z_threshold=2.0, window_seconds=10)
+    ).detect_from_windows(windows)
+
+    assert anomalies[0].anomaly_type == "latency_spike"
+
+
+def test_log_service_jsonl_bool_and_unknown_field_regressions(tmp_path):
+    row = generate_logs(seed=3, per_service=1)[0].to_json_dict()
+    path = tmp_path / "logs.jsonl"
+    path.write_text(json.dumps(row | {"is_anomaly": " TRUE "}), encoding="utf-8")
+    assert LogService().read_jsonl(path)[0].is_anomaly is True
+
+    for invalid_value in ["0", "yes", 1, None, ""]:
+        path.write_text(json.dumps(row | {"is_anomaly": invalid_value}), encoding="utf-8")
+        with pytest.raises(ValueError):
+            LogService().read_jsonl(path)
+
+    path.write_text(json.dumps(row | {"unexpected": "value"}), encoding="utf-8")
+    with pytest.raises((ValidationError, ValueError)):
+        LogService().read_jsonl(path)
 ```
 
 - [ ] **Step 2: Run tests and verify they fail**
