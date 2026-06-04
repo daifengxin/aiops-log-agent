@@ -44,6 +44,12 @@ def test_stream_parser_accepts_documented_window_option():
     assert args.window_seconds == 10
 
 
+def test_evaluate_parser_accepts_all_flag_without_running_report():
+    args = build_parser().parse_args(["evaluate", "--all"])
+
+    assert args.all is True
+
+
 def test_jsonable_preserves_command_buckets_and_serializes_runtime_types():
     timestamp = datetime(2026, 6, 5, 9, 0, tzinfo=timezone.utc)
     result = {

@@ -44,6 +44,11 @@ def build_parser() -> argparse.ArgumentParser:
     evaluate_safety.set_defaults(handler=_handle_evaluate_safety)
 
     evaluate = subparsers.add_parser("evaluate")
+    evaluate.add_argument(
+        "--all",
+        action="store_true",
+        help="Run the full offline evaluation report.",
+    )
     evaluate.set_defaults(handler=_handle_evaluate)
 
     build_rag = subparsers.add_parser("build-rag")
