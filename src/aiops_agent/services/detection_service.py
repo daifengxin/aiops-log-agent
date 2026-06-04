@@ -53,7 +53,8 @@ class DetectionService:
             scores = z_scores(residuals)
 
             for window, score, expected in zip(ordered, scores, baseline, strict=True):
-                if score < self.config.z_threshold:
+                # 延迟异常只关心高于基线的尖峰，恢复/下降窗口不应触发报警。
+                if window.latency_p95 <= expected or score < self.config.z_threshold:
                     continue
 
                 anomaly_type = self._infer_anomaly_type(window)
