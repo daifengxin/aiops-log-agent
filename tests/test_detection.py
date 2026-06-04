@@ -43,6 +43,30 @@ def _record(
     )
 
 
+def _window(
+    *,
+    bucket_start: datetime,
+    latency_p95: float,
+    service: str = "api-gateway",
+    error_rate: float = 0.0,
+    queue_depth_mean: float = 10.0,
+    anomaly_types: tuple[str, ...] = (),
+):
+    from aiops_agent.models.schemas import WindowMetric
+
+    return WindowMetric(
+        service=service,
+        window_seconds=10,
+        bucket_start=bucket_start,
+        latency_mean=latency_p95,
+        latency_p95=latency_p95,
+        error_rate=error_rate,
+        queue_depth_mean=queue_depth_mean,
+        is_anomaly=bool(anomaly_types),
+        anomaly_types=anomaly_types,
+    )
+
+
 def test_ewma_responds_to_recent_values():
     values = [10.0, 10.0, 10.0, 100.0]
     slow = ewma(values, alpha=0.1)
@@ -72,7 +96,9 @@ def test_z_scores_handles_short_and_zero_variance_series():
     assert z_scores([0.0, 0.0, 0.0]) == [0.0, 0.0, 0.0]
 
     scores = z_scores([0.0, 0.0, 0.0, 100.0])
-    assert math.isinf(scores[-1])
+    assert math.isfinite(scores[-1])
+    assert scores[-1] > 2.0
+    assert z_scores([0.0, 0.0, 0.0, 5.0])[-1] < 2.0
 
 
 def test_z_scores_only_scores_positive_spikes_after_warmup():
@@ -138,6 +164,20 @@ def test_detection_service_finds_known_anomalies():
     assert {item.anomaly_type for item in anomalies} & {"latency_spike", "transaction_conflict", "queue_backlog"}
 
 
+def test_detection_service_has_bounded_pre_spike_behavior():
+    base_time = datetime(2026, 6, 5, 9, 0, tzinfo=timezone.utc)
+    windows = [
+        _window(bucket_start=base_time.replace(second=offset), latency_p95=latency)
+        for offset, latency in [(0, 100.0), (10, 100.0), (20, 100.0), (30, 220.0)]
+    ]
+
+    anomalies = DetectionService(
+        DetectionConfig(alpha=0.2, z_threshold=2.0, window_seconds=10)
+    ).detect_from_windows(windows)
+
+    assert [item.bucket_start for item in anomalies] == [base_time.replace(second=30)]
+
+
 def test_detection_service_does_not_alert_on_latency_drop_recovery():
     from aiops_agent.models.schemas import WindowMetric
 
@@ -198,21 +238,9 @@ def test_detection_service_does_not_alert_on_latency_drop_recovery():
 
 
 def test_detection_service_alerts_on_positive_spike_after_stable_history():
-    from aiops_agent.models.schemas import WindowMetric
-
     base_time = datetime(2026, 6, 5, 9, 0, tzinfo=timezone.utc)
     windows = [
-        WindowMetric(
-            service="api-gateway",
-            window_seconds=10,
-            bucket_start=base_time.replace(second=offset),
-            latency_mean=latency,
-            latency_p95=latency,
-            error_rate=0.0,
-            queue_depth_mean=10.0,
-            is_anomaly=False,
-            anomaly_types=(),
-        )
+        _window(bucket_start=base_time.replace(second=offset), latency_p95=latency)
         for offset, latency in [(0, 100.0), (10, 100.0), (20, 100.0), (30, 220.0)]
     ]
 
@@ -223,6 +251,55 @@ def test_detection_service_alerts_on_positive_spike_after_stable_history():
     assert len(anomalies) == 1
     assert anomalies[0].bucket_start == base_time.replace(second=30)
     assert anomalies[0].score >= 2.0
+
+
+def test_detection_service_extends_active_high_latency_period():
+    base_time = datetime(2026, 6, 5, 9, 0, tzinfo=timezone.utc)
+    windows = [
+        _window(bucket_start=base_time.replace(second=offset), latency_p95=latency)
+        for offset, latency in [
+            (0, 100.0),
+            (10, 100.0),
+            (20, 100.0),
+            (30, 220.0),
+            (40, 220.0),
+            (50, 220.0),
+            (59, 100.0),
+        ]
+    ]
+
+    anomalies = DetectionService(
+        DetectionConfig(alpha=0.2, z_threshold=2.0, window_seconds=10)
+    ).detect_from_windows(windows)
+
+    assert [item.bucket_start for item in anomalies] == [
+        base_time.replace(second=30),
+        base_time.replace(second=40),
+        base_time.replace(second=50),
+    ]
+    assert "active anomaly period" in anomalies[1].reason
+
+
+def test_detection_service_infers_type_without_label_leakage():
+    base_time = datetime(2026, 6, 5, 9, 0, tzinfo=timezone.utc)
+    windows = [
+        _window(bucket_start=base_time.replace(second=offset), latency_p95=latency)
+        for offset, latency in [(0, 100.0), (10, 100.0), (20, 100.0)]
+    ]
+    windows.append(
+        _window(
+            bucket_start=base_time.replace(second=30),
+            latency_p95=220.0,
+            anomaly_types=("queue_backlog",),
+        )
+    )
+
+    anomalies = DetectionService(
+        DetectionConfig(alpha=0.2, z_threshold=2.0, window_seconds=10)
+    ).detect_from_windows(windows)
+
+    assert len(anomalies) == 1
+    assert anomalies[0].anomaly_type == "latency_spike"
 
 
 def test_detection_service_does_not_alert_when_positive_residual_declines():
