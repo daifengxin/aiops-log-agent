@@ -19,8 +19,9 @@ class DiagnosisGraphNodes:
         *,
         llm_service: GeminiLLMService | None = None,
         rag_service: RAGService | None = None,
+        detection_service: DetectionService | None = None,
     ) -> None:
-        self.detection_service = DetectionService()
+        self.detection_service = detection_service or DetectionService()
         self._rag_service = rag_service
         self.diagnosis_service = DiagnosisService(llm_service or GeminiLLMService())
         self.safety_service = CommandSafetyService()
@@ -68,10 +69,12 @@ class DiagnosisGraphNodes:
         if not anomalies:
             return {"alert_decision": {"suppressed": False, "reason": "no_detected_anomaly"}}
 
+        # 流式场景会累计窗口，必须对最新异常做抑制判断，避免一直重复评估首个异常。
+        anomaly = max(anomalies, key=lambda item: item.bucket_start)
         root_cause = str(root_causes[0]) if root_causes else "unknown"
         return {
             "alert_decision": self.alert_service.evaluate(
-                anomalies[0],
+                anomaly,
                 root_cause=root_cause,
             )
         }

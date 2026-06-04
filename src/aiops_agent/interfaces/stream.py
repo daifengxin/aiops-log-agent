@@ -7,6 +7,7 @@ from typing import Any
 
 from aiops_agent.graph.builder import build_diagnosis_graph
 from aiops_agent.interfaces.cli import _jsonable
+from aiops_agent.services.detection_service import DetectionConfig, DetectionService
 from aiops_agent.services.log_service import LogService
 
 
@@ -14,11 +15,13 @@ async def stream_file(
     path: Path,
     emit_interval: float,
     batch_size: int = 20,
+    window_seconds: int = 10,
 ) -> None:
     """一次性读取日志，然后按增长窗口异步输出诊断快照。"""
 
     records = LogService().read_jsonl(path)
-    graph = build_diagnosis_graph()
+    detection = DetectionService(DetectionConfig(window_seconds=window_seconds))
+    graph = build_diagnosis_graph(detection_service=detection)
     for end in range(batch_size, len(records) + batch_size, batch_size):
         batch = records[: min(end, len(records))]
         if not batch:
@@ -33,10 +36,15 @@ async def stream_file(
 
 
 def run_stream(path: Path, window_seconds: int, emit_interval: float) -> None:
-    """同步 CLI 包装；window_seconds 预留给未来检测配置，当前图使用默认窗口。"""
+    """同步 CLI 包装，把窗口参数传入检测图。"""
 
-    _ = window_seconds
-    asyncio.run(stream_file(path=path, emit_interval=emit_interval))
+    asyncio.run(
+        stream_file(
+            path=path,
+            emit_interval=emit_interval,
+            window_seconds=window_seconds,
+        )
+    )
 
 
 def _stream_event(records_seen: int, result: dict[str, Any]) -> dict[str, Any]:
