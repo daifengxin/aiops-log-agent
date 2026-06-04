@@ -7,7 +7,7 @@ name = "aiops-log-agent"
 version = "0.1.0"
 description = "Evaluation-first AI ops log anomaly detection agent"
 requires-python = ">=3.11"
-dependencies = []
+dependencies = ["python-dotenv>=1.0.1"]
 
 [tool.setuptools.packages.find]
 where = ["src"]
@@ -16,6 +16,3 @@ where = ["src"]
 pythonpath = ["src"]
 testpaths = ["tests"]
 addopts = "-q"
-
-[project.scripts]
-aiops-agent = "aiops_agent.interfaces.cli:main"
