@@ -82,11 +82,10 @@ def _evaluate_windows(
     )
     anomalies = DetectionService(config=config).detect_from_windows(windows)
 
-    # 用窗口主键对齐真值和预测，避免检测结果排序或数量变化影响指标计算。
+    # 类型行评估的是对应真值类型的窗口级覆盖率，预测侧使用全部已检测窗口。
     predicted_keys = {
         (item.service, item.bucket_start)
         for item in anomalies
-        if anomaly_type is None or item.anomaly_type == anomaly_type
     }
     true_labels = [
         _is_target_window(window, anomaly_type)
