@@ -15,4 +15,5 @@ def test_write_full_report_creates_evaluation_markdown(tmp_path, monkeypatch):
     assert "异常检测参数敏感性" in report
     assert "RAG Chunking Recall@5" in report
     assert "命令安全分级" in report
+    assert "60 秒内相同 service + anomaly_type + root_cause" in report
     assert "10 倍日志量扩容" in report
