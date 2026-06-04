@@ -5,7 +5,7 @@ import random
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-from aiops_agent.data.schemas import LogRecord
+from aiops_agent.models.schemas import LogRecord
 
 SERVICES = [
     "api-gateway",

@@ -1,1 +1,1 @@
-"""Data generation and schema helpers."""
+"""Data generation helpers."""

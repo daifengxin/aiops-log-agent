@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections import defaultdict
 from dataclasses import dataclass, field
 
-from aiops_agent.data.schemas import DetectedAnomaly, LogRecord, WindowMetric
+from aiops_agent.models.schemas import DetectedAnomaly, LogRecord, WindowMetric
 from aiops_agent.detection.ewma import ewma
 from aiops_agent.detection.windows import aggregate_windows
 from aiops_agent.detection.zscore import z_scores
@@ -14,6 +14,14 @@ class DetectionConfig:
     alpha: float = 0.2
     z_threshold: float = 2.5
     window_seconds: int = 10
+
+    def __post_init__(self) -> None:
+        if not 0 < self.alpha <= 1:
+            raise ValueError("alpha must be greater than 0 and less than or equal to 1")
+        if self.z_threshold <= 0:
+            raise ValueError("z_threshold must be greater than 0")
+        if self.window_seconds <= 0:
+            raise ValueError("window_seconds must be greater than 0")
 
 
 @dataclass
@@ -71,6 +79,8 @@ class DetectionService:
         new_records: list[LogRecord],
         flush_at: object | None = None,
     ) -> list[DetectedAnomaly]:
+        """追加新日志并基于完整缓冲区重算，flush_at 仅保留给后续流式切窗。"""
+
         _ = flush_at
         self._stream_buffer.extend(new_records)
         return self.detect(self._stream_buffer)

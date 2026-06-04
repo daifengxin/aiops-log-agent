@@ -1,6 +1,10 @@
 import json
+import importlib.util
 from collections import Counter
 from datetime import datetime, timedelta, timezone
+
+import pytest
+from pydantic import BaseModel, ValidationError
 
 from aiops_agent.data.generator import SERVICES, generate_logs, write_jsonl
 
@@ -26,6 +30,21 @@ EXPECTED_JSON_KEYS = {
     "anomaly_type",
     "is_anomaly",
 }
+
+
+def test_schema_models_live_under_models_and_are_pydantic():
+    from aiops_agent.models.schemas import (
+        DetectedAnomaly,
+        LogRecord,
+        RetrievedChunk,
+        SafetyResult,
+        WindowMetric,
+    )
+
+    assert importlib.util.find_spec("aiops_agent.data.schemas") is None
+    for model in (LogRecord, WindowMetric, DetectedAnomaly, RetrievedChunk, SafetyResult):
+        assert issubclass(model, BaseModel)
+        assert model.model_config.get("frozen") is True
 
 
 def test_generate_logs_has_required_volume_and_labels():
@@ -93,3 +112,13 @@ def test_write_jsonl_round_trips_records(tmp_path):
     assert len(rows) == len(logs)
     assert set(rows[0]) == EXPECTED_JSON_KEYS
     assert rows[0]["timestamp"] == logs[0].timestamp.isoformat()
+
+
+def test_log_record_serializes_timestamp_and_rejects_string_booleans():
+    from aiops_agent.models.schemas import LogRecord
+
+    row = generate_logs(seed=3, per_service=1)[0].to_json_dict()
+
+    assert isinstance(row["timestamp"], str)
+    with pytest.raises(ValidationError):
+        LogRecord(**(row | {"is_anomaly": "false"}))
