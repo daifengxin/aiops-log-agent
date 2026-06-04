@@ -102,6 +102,8 @@ aiops-log-agent/
   .env
   .env.example
   .gitignore
+  pyproject.toml
+  uv.lock
   requirements.txt
   README.md
 ```
@@ -330,7 +332,7 @@ GEMINI_API_KEY=<local .env only>
 流式入口：
 
 ```text
-python -m aiops_agent.interfaces.cli stream data/logs/test_logs.jsonl --window 10 --emit-interval 1
+uv run python -m aiops_agent.interfaces.cli stream data/logs/test_logs.jsonl --window 10 --emit-interval 1
 ```
 
 流程：
@@ -384,7 +386,7 @@ POST /diagnose
 报告由脚本生成：
 
 ```text
-python -m aiops_agent.interfaces.cli evaluate --all
+uv run python -m aiops_agent.interfaces.cli evaluate --all
 ```
 
 输出：
@@ -437,12 +439,14 @@ tests/
 验收命令：
 
 ```text
-python -m pytest
-python -m aiops_agent.interfaces.cli generate-data
-python -m aiops_agent.interfaces.cli build-rag
-python -m aiops_agent.interfaces.cli evaluate --all
-python -m aiops_agent.interfaces.cli diagnose data/logs/test_logs.jsonl --limit 80
-python -m aiops_agent.interfaces.cli stream data/logs/test_logs.jsonl --window 10 --emit-interval 1
+uv sync
+uv run pytest
+uv run python -m aiops_agent.interfaces.cli generate-data
+uv run python -m aiops_agent.interfaces.cli build-rag
+uv run python -m aiops_agent.interfaces.cli evaluate --all
+uv run python -m aiops_agent.interfaces.cli diagnose data/logs/test_logs.jsonl --limit 80
+uv run python -m aiops_agent.interfaces.cli stream data/logs/test_logs.jsonl --window 10 --emit-interval 1
+uv export --format requirements.txt --no-hashes --no-emit-project --output-file requirements.txt
 ```
 
 验收条件：

@@ -12,13 +12,14 @@
 
 ## File Structure Map
 
-- `pyproject.toml`: package metadata, pytest config, console entry point.
-- `requirements.txt`: runtime and test dependencies for quick setup.
+- `pyproject.toml`: package metadata, uv dependency source, pytest config.
+- `uv.lock`: uv-generated dependency lockfile.
+- `requirements.txt`: final exported dependency deliverable generated from `uv.lock`.
 - `.gitignore`: excludes `.env`, generated data, reports, vector stores, caches.
 - `.env.example`: documents `GEMINI_API_KEY` and `GEMINI_MODEL`.
 - `README.md`: setup, commands, architecture, evaluation instructions.
 - `src/aiops_agent/config.py`: loads paths and environment config.
-- `src/aiops_agent/data/schemas.py`: dataclasses for logs, anomalies, chunks, safety labels, evaluation rows.
+- `src/aiops_agent/models/schemas.py`: Pydantic models for logs, anomalies, chunks, safety labels, evaluation rows.
 - `src/aiops_agent/data/generator.py`: deterministic synthetic JSONL log generation.
 - `src/aiops_agent/detection/ewma.py`: EWMA pure functions.
 - `src/aiops_agent/detection/zscore.py`: Z-Score pure functions.
@@ -50,7 +51,7 @@
 
 **Files:**
 - Create: `pyproject.toml`
-- Create: `requirements.txt`
+- Create: `uv.lock`
 - Create: `.gitignore`
 - Create: `.env.example`
 - Create: `src/aiops_agent/__init__.py`
@@ -62,13 +63,13 @@
 Create `tests/test_config.py`:
 
 ```python
-from pathlib import Path
-
 from aiops_agent.config import Settings
 
 
 def test_settings_defaults_use_project_paths(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
+    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+    monkeypatch.delenv("GEMINI_MODEL", raising=False)
     settings = Settings.from_env()
 
     assert settings.project_root == tmp_path
@@ -77,11 +78,53 @@ def test_settings_defaults_use_project_paths(tmp_path, monkeypatch):
     assert settings.reports_dir == tmp_path / "reports"
     assert settings.gemini_model == "gemini-3.5-flash"
     assert settings.gemini_api_key is None
+
+
+def test_settings_loads_env_from_explicit_project_root(tmp_path, monkeypatch):
+    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+    monkeypatch.delenv("GEMINI_MODEL", raising=False)
+    (tmp_path / ".env").write_text("GEMINI_API_KEY=abc\nGEMINI_MODEL=custom-model\n", encoding="utf-8")
+
+    settings = Settings.from_env(project_root=tmp_path)
+
+    assert settings.gemini_api_key == "abc"
+    assert settings.gemini_model == "custom-model"
+
+
+def test_settings_does_not_leak_dotenv_values_between_roots(tmp_path, monkeypatch):
+    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+    monkeypatch.delenv("GEMINI_MODEL", raising=False)
+    first = tmp_path / "first"
+    second = tmp_path / "second"
+    first.mkdir()
+    second.mkdir()
+    (first / ".env").write_text("GEMINI_API_KEY=first-key\n", encoding="utf-8")
+    (second / ".env").write_text("GEMINI_MODEL=second-model\n", encoding="utf-8")
+
+    first_settings = Settings.from_env(project_root=first)
+    second_settings = Settings.from_env(project_root=second)
+
+    assert first_settings.gemini_api_key == "first-key"
+    assert second_settings.gemini_api_key is None
+    assert second_settings.gemini_model == "second-model"
+
+
+def test_settings_ensure_dirs_creates_expected_directories(tmp_path, monkeypatch):
+    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+    monkeypatch.delenv("GEMINI_MODEL", raising=False)
+    settings = Settings.from_env(project_root=tmp_path)
+
+    settings.ensure_dirs()
+
+    assert settings.logs_dir.exists()
+    assert settings.rag_dir.exists()
+    assert settings.eval_dir.exists()
+    assert settings.figures_dir.exists()
 ```
 
 - [ ] **Step 2: Run the test and verify it fails**
 
-Run: `python -m pytest tests/test_config.py -v`
+Run: `uv run pytest tests/test_config.py -v`
 
 Expected: FAIL with `ModuleNotFoundError: No module named 'aiops_agent'`.
 
@@ -99,7 +142,23 @@ name = "aiops-log-agent"
 version = "0.1.0"
 description = "Evaluation-first AI ops log anomaly detection agent"
 requires-python = ">=3.11"
-dependencies = []
+dependencies = [
+    "chromadb>=0.5.23",
+    "fastapi>=0.115.0",
+    "google-genai>=1.0.0",
+    "langgraph>=0.2.60",
+    "matplotlib>=3.8.0",
+    "numpy>=1.26.0",
+    "pandas>=2.2.0",
+    "pydantic>=2.8.0",
+    "python-dotenv>=1.0.1",
+    "sentence-transformers>=3.0.0",
+    "tabulate>=0.9.0",
+    "uvicorn>=0.30.0",
+]
+
+[dependency-groups]
+dev = ["pytest>=8.3.0"]
 
 [tool.setuptools.packages.find]
 where = ["src"]
@@ -110,23 +169,8 @@ testpaths = ["tests"]
 addopts = "-q"
 ```
 
-Create `requirements.txt`:
-
-```text
-chromadb>=0.5.23
-fastapi>=0.115.0
-google-genai>=1.0.0
-langgraph>=0.2.60
-matplotlib>=3.8.0
-numpy>=1.26.0
-pandas>=2.2.0
-pydantic>=2.8.0
-python-dotenv>=1.0.1
-pytest>=8.3.0
-sentence-transformers>=3.0.0
-tabulate>=0.9.0
-uvicorn>=0.30.0
-```
+After creating `pyproject.toml`, run `uv lock` so `uv.lock` is generated and committed.
+If a hand-written `requirements.txt` already exists from earlier scaffold work, remove it in Task 1; Task 10 recreates it via `uv export`.
 
 Create `.gitignore`:
 
@@ -168,7 +212,7 @@ import os
 from dataclasses import dataclass
 from pathlib import Path
 
-from dotenv import load_dotenv
+from dotenv import dotenv_values
 
 
 @dataclass(frozen=True)
@@ -187,8 +231,9 @@ class Settings:
 
     @classmethod
     def from_env(cls, project_root: Path | None = None) -> "Settings":
-        load_dotenv()
+        """从真实环境变量和项目本地 .env 构造配置，且不污染全局环境。"""
         root = project_root or Path.cwd()
+        dotenv_config = dotenv_values(root / ".env")
         data_dir = root / "data"
         return cls(
             project_root=root,
@@ -198,33 +243,40 @@ class Settings:
             eval_dir=data_dir / "eval",
             reports_dir=root / "reports",
             figures_dir=root / "reports" / "figures",
-            gemini_api_key=os.getenv("GEMINI_API_KEY"),
-            gemini_model=os.getenv("GEMINI_MODEL", "gemini-3.5-flash"),
+            gemini_api_key=_env_value("GEMINI_API_KEY", dotenv_config),
+            gemini_model=_env_value("GEMINI_MODEL", dotenv_config) or "gemini-3.5-flash",
         )
 
     def ensure_dirs(self) -> None:
+        """创建运行时目录，供数据、RAG、评测和图表输出使用。"""
         for path in [self.logs_dir, self.rag_dir, self.eval_dir, self.figures_dir]:
             path.mkdir(parents=True, exist_ok=True)
+
+
+def _env_value(key: str, dotenv_config: dict[str, str | None]) -> str | None:
+    """真实环境变量优先，其次使用项目 .env 文件中的值。"""
+    return os.getenv(key) or dotenv_config.get(key)
 ```
 
 - [ ] **Step 5: Run the config test**
 
-Run: `python -m pytest tests/test_config.py -v`
+Run: `uv run pytest tests/test_config.py -v`
 
 Expected: PASS.
 
 - [ ] **Step 6: Commit**
 
 ```bash
-git add pyproject.toml requirements.txt .gitignore .env.example src/aiops_agent/__init__.py src/aiops_agent/config.py tests/test_config.py
-git commit -m "chore: scaffold project config"
+git add pyproject.toml uv.lock .gitignore .env.example src/aiops_agent/__init__.py src/aiops_agent/config.py tests/test_config.py requirements.txt
+git commit -m "chore(config): scaffold project config"
 ```
 
 ## Task 2: Data Schemas And Synthetic Log Generator
 
 **Files:**
 - Create: `src/aiops_agent/data/__init__.py`
-- Create: `src/aiops_agent/data/schemas.py`
+- Create: `src/aiops_agent/models/__init__.py`
+- Create: `src/aiops_agent/models/schemas.py`
 - Create: `src/aiops_agent/data/generator.py`
 - Test: `tests/test_data_generator.py`
 
@@ -263,7 +315,7 @@ def test_write_jsonl_round_trips_records(tmp_path):
 
 - [ ] **Step 2: Run tests and verify they fail**
 
-Run: `python -m pytest tests/test_data_generator.py -v`
+Run: `uv run pytest tests/test_data_generator.py -v`
 
 Expected: FAIL with import errors for `aiops_agent.data.generator`.
 
@@ -272,21 +324,33 @@ Expected: FAIL with import errors for `aiops_agent.data.generator`.
 Create `src/aiops_agent/data/__init__.py`:
 
 ```python
-"""Data generation and schema helpers."""
+"""Data generation helpers."""
 ```
 
-Create `src/aiops_agent/data/schemas.py`:
+Create `src/aiops_agent/models/__init__.py`:
+
+```python
+"""Pydantic DTO and domain models."""
+```
+
+Create `src/aiops_agent/models/schemas.py`:
 
 ```python
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass
 from datetime import datetime
 from typing import Any
 
+from pydantic import BaseModel, ConfigDict, StrictBool
 
-@dataclass(frozen=True)
-class LogRecord:
+
+class FrozenModel(BaseModel):
+    """所有 DTO 默认不可变且拒绝未知字段，避免输入悄悄漂移。"""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+
+class LogRecord(FrozenModel):
     """单条微服务日志，包含检测指标和人工标注字段。"""
 
     timestamp: datetime
@@ -301,16 +365,15 @@ class LogRecord:
     queue_depth: int
     dependency: str
     anomaly_type: str
-    is_anomaly: bool
+    is_anomaly: StrictBool
 
     def to_json_dict(self) -> dict[str, Any]:
-        row = asdict(self)
+        row = self.model_dump()
         row["timestamp"] = self.timestamp.isoformat()
         return row
 
 
-@dataclass(frozen=True)
-class WindowMetric:
+class WindowMetric(FrozenModel):
     """聚合后的时间窗口指标。"""
 
     service: str
@@ -320,12 +383,11 @@ class WindowMetric:
     latency_p95: float
     error_rate: float
     queue_depth_mean: float
-    is_anomaly: bool
+    is_anomaly: StrictBool
     anomaly_types: tuple[str, ...]
 
 
-@dataclass(frozen=True)
-class DetectedAnomaly:
+class DetectedAnomaly(FrozenModel):
     """检测器输出的异常窗口。"""
 
     service: str
@@ -337,8 +399,7 @@ class DetectedAnomaly:
     reason: str
 
 
-@dataclass(frozen=True)
-class RetrievedChunk:
+class RetrievedChunk(FrozenModel):
     """RAG 检索返回的文档片段。"""
 
     chunk_id: str
@@ -348,8 +409,7 @@ class RetrievedChunk:
     score: float
 
 
-@dataclass(frozen=True)
-class SafetyResult:
+class SafetyResult(FrozenModel):
     """命令安全分级结果。"""
 
     command: str
@@ -369,7 +429,7 @@ import random
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-from aiops_agent.data.schemas import LogRecord
+from aiops_agent.models.schemas import LogRecord
 
 
 SERVICES = ["api-gateway", "auth-service", "business-service", "data-service", "message-queue"]
@@ -477,7 +537,7 @@ def _dependency_for(service: str) -> str:
 
 - [ ] **Step 5: Run generator tests**
 
-Run: `python -m pytest tests/test_data_generator.py -v`
+Run: `uv run pytest tests/test_data_generator.py -v`
 
 Expected: PASS.
 
@@ -485,7 +545,7 @@ Expected: PASS.
 
 ```bash
 git add src/aiops_agent/data tests/test_data_generator.py
-git commit -m "feat: add synthetic log generator"
+git commit -m "feat(data): add synthetic log generator"
 ```
 
 ## Task 3: Detection Core And Detection Service
@@ -505,11 +565,36 @@ git commit -m "feat: add synthetic log generator"
 Create `tests/test_detection.py`:
 
 ```python
+import json
+import math
+from datetime import datetime, timedelta, timezone
+
+import pytest
+from pydantic import ValidationError
+
 from aiops_agent.data.generator import generate_logs
 from aiops_agent.detection.ewma import ewma
 from aiops_agent.detection.zscore import z_scores
 from aiops_agent.detection.windows import aggregate_windows
+from aiops_agent.models.schemas import WindowMetric
 from aiops_agent.services.detection_service import DetectionConfig, DetectionService
+from aiops_agent.services.log_service import LogService
+
+
+def _window(bucket_start: datetime, latency_p95: float, **overrides) -> WindowMetric:
+    payload = {
+        "service": "api-gateway",
+        "window_seconds": 10,
+        "bucket_start": bucket_start,
+        "latency_mean": latency_p95,
+        "latency_p95": latency_p95,
+        "error_rate": 0.0,
+        "queue_depth_mean": 10.0,
+        "is_anomaly": bool(overrides.get("anomaly_types", ())),
+        "anomaly_types": (),
+    }
+    payload.update(overrides)
+    return WindowMetric(**payload)
 
 
 def test_ewma_responds_to_recent_values():
@@ -539,11 +624,88 @@ def test_detection_service_finds_known_anomalies():
 
     assert anomalies
     assert {item.anomaly_type for item in anomalies} & {"latency_spike", "transaction_conflict", "queue_backlog"}
+
+
+def test_z_scores_review_regressions():
+    assert math.isfinite(z_scores([0.0, 0.0, 0.0, 100.0])[-1])
+    assert z_scores([0.0, 0.0, 0.0, 100.0])[-1] > 2.0
+    assert z_scores([0.0, 0.0, 0.0, 5.0])[-1] < 2.0
+    assert z_scores([-1.0, -1.0, -1.0, 0.0])[-1] == 0.0
+    assert z_scores([-10.0, -10.0, -10.0, -5.0])[-1] == 0.0
+
+
+def test_detection_service_bounded_pre_spike_and_active_period():
+    base_time = datetime(2026, 6, 5, 9, 0, tzinfo=timezone.utc)
+    windows = [
+        _window(base_time.replace(second=offset), latency)
+        for offset, latency in [(0, 100.0), (10, 100.0), (20, 100.0), (30, 220.0), (40, 220.0), (50, 100.0)]
+    ]
+    anomalies = DetectionService(
+        DetectionConfig(alpha=0.2, z_threshold=2.0, window_seconds=10)
+    ).detect_from_windows(windows)
+
+    assert [item.bucket_start for item in anomalies] == [
+        base_time.replace(second=30),
+        base_time.replace(second=40),
+    ]
+    assert "active anomaly period" in anomalies[1].reason
+
+
+def test_detection_service_resets_active_period_across_window_gaps():
+    base_time = datetime(2026, 6, 5, 9, 0, tzinfo=timezone.utc)
+    windows = [
+        _window(base_time + timedelta(seconds=offset), latency)
+        for offset, latency in [(0, 100.0), (10, 100.0), (20, 100.0), (30, 220.0), (60, 140.0)]
+    ]
+    anomalies = DetectionService(
+        DetectionConfig(alpha=0.2, z_threshold=2.0, window_seconds=10)
+    ).detect_from_windows(windows)
+
+    assert [item.bucket_start for item in anomalies] == [
+        base_time + timedelta(seconds=30),
+    ]
+
+
+def test_detection_service_infers_type_without_label_leakage():
+    base_time = datetime(2026, 6, 5, 9, 0, tzinfo=timezone.utc)
+    windows = [
+        _window(base_time.replace(second=offset), latency)
+        for offset, latency in [(0, 100.0), (10, 100.0), (20, 100.0)]
+    ]
+    windows.append(
+        _window(
+            base_time.replace(second=30),
+            220.0,
+            anomaly_types=("queue_backlog",),
+        )
+    )
+
+    anomalies = DetectionService(
+        DetectionConfig(alpha=0.2, z_threshold=2.0, window_seconds=10)
+    ).detect_from_windows(windows)
+
+    assert anomalies[0].anomaly_type == "latency_spike"
+
+
+def test_log_service_jsonl_bool_and_unknown_field_regressions(tmp_path):
+    row = generate_logs(seed=3, per_service=1)[0].to_json_dict()
+    path = tmp_path / "logs.jsonl"
+    path.write_text(json.dumps(row | {"is_anomaly": " TRUE "}), encoding="utf-8")
+    assert LogService().read_jsonl(path)[0].is_anomaly is True
+
+    for invalid_value in ["0", "yes", 1, None, ""]:
+        path.write_text(json.dumps(row | {"is_anomaly": invalid_value}), encoding="utf-8")
+        with pytest.raises(ValueError):
+            LogService().read_jsonl(path)
+
+    path.write_text(json.dumps(row | {"unexpected": "value"}), encoding="utf-8")
+    with pytest.raises((ValidationError, ValueError)):
+        LogService().read_jsonl(path)
 ```
 
 - [ ] **Step 2: Run tests and verify they fail**
 
-Run: `python -m pytest tests/test_detection.py -v`
+Run: `uv run pytest tests/test_detection.py -v`
 
 Expected: FAIL with missing detection modules.
 
@@ -579,19 +741,35 @@ Create `src/aiops_agent/detection/zscore.py`:
 ```python
 from __future__ import annotations
 
-import statistics
+import numpy as np
+
+_MIN_HISTORY = 3
+_MIN_STD = 10.0
 
 
 def z_scores(values: list[float]) -> list[float]:
-    """基于样本标准差计算绝对 Z-Score，用于识别偏离基线的窗口。"""
-    if len(values) < 2:
-        return [0.0 for _ in values]
+    """基于历史值计算正向 z-score，只突出相对近期基线的上升尖峰。"""
 
-    mean = statistics.mean(values)
-    stdev = statistics.stdev(values)
-    if stdev == 0:
-        return [0.0 for _ in values]
-    return [abs((float(value) - mean) / stdev) for value in values]
+    scores: list[float] = []
+    for index, current in enumerate(values):
+        if index < _MIN_HISTORY:
+            scores.append(0.0)
+            continue
+
+        if float(current) <= 0.0:
+            scores.append(0.0)
+            continue
+
+        history = np.array(values[:index], dtype=float)
+        mean = float(np.mean(history))
+        if float(current) <= mean:
+            scores.append(0.0)
+            continue
+
+        # 使用标准差下限，避免低方差场景产生 inf，同时保留 z-like 阈值语义。
+        std = max(float(np.std(history)), _MIN_STD)
+        scores.append((float(current) - mean) / std)
+    return scores
 ```
 
 - [ ] **Step 4: Implement window aggregation**
@@ -607,7 +785,7 @@ from datetime import datetime, timezone
 
 import numpy as np
 
-from aiops_agent.data.schemas import LogRecord, WindowMetric
+from aiops_agent.models.schemas import LogRecord, WindowMetric
 
 
 def aggregate_windows(records: list[LogRecord], window_seconds: int) -> list[WindowMetric]:
@@ -656,7 +834,7 @@ import json
 from datetime import datetime
 from pathlib import Path
 
-from aiops_agent.data.schemas import LogRecord
+from aiops_agent.models.schemas import LogRecord
 
 
 class LogService:
@@ -665,28 +843,31 @@ class LogService:
     def read_jsonl(self, path: Path, limit: int | None = None) -> list[LogRecord]:
         records: list[LogRecord] = []
         with path.open("r", encoding="utf-8") as handle:
-            for index, line in enumerate(handle):
-                if limit is not None and index >= limit:
+            for line in handle:
+                if limit is not None and len(records) >= limit:
                     break
+                if not line.strip():
+                    continue
+
                 row = json.loads(line)
-                records.append(
-                    LogRecord(
-                        timestamp=datetime.fromisoformat(row["timestamp"]),
-                        service=row["service"],
-                        latency_ms=float(row["latency_ms"]),
-                        error_code=row["error_code"],
-                        request_id=row["request_id"],
-                        endpoint=row["endpoint"],
-                        status_code=int(row["status_code"]),
-                        cpu_pct=float(row["cpu_pct"]),
-                        memory_mb=float(row["memory_mb"]),
-                        queue_depth=int(row["queue_depth"]),
-                        dependency=row["dependency"],
-                        anomaly_type=row["anomaly_type"],
-                        is_anomaly=bool(row["is_anomaly"]),
-                    )
-                )
+                payload = dict(row)
+                payload["timestamp"] = datetime.fromisoformat(row["timestamp"])
+                payload["is_anomaly"] = _parse_bool(row["is_anomaly"])
+                records.append(LogRecord.model_validate(payload))
         return records
+
+
+def _parse_bool(value: object) -> bool:
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        normalized = value.strip().lower()
+        if normalized == "true":
+            return True
+        if normalized == "false":
+            return False
+
+    raise ValueError(f"is_anomaly must be a boolean value, got {value!r}")
 ```
 
 Create `src/aiops_agent/services/detection_service.py`:
@@ -694,10 +875,11 @@ Create `src/aiops_agent/services/detection_service.py`:
 ```python
 from __future__ import annotations
 
+from collections import defaultdict
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import timedelta
 
-from aiops_agent.data.schemas import DetectedAnomaly, LogRecord, WindowMetric
+from aiops_agent.models.schemas import DetectedAnomaly, LogRecord, WindowMetric
 from aiops_agent.detection.ewma import ewma
 from aiops_agent.detection.windows import aggregate_windows
 from aiops_agent.detection.zscore import z_scores
@@ -709,10 +891,18 @@ class DetectionConfig:
     z_threshold: float = 2.5
     window_seconds: int = 10
 
+    def __post_init__(self) -> None:
+        if not 0 < self.alpha <= 1:
+            raise ValueError("alpha must be greater than 0 and less than or equal to 1")
+        if self.z_threshold <= 0:
+            raise ValueError("z_threshold must be greater than 0")
+        if self.window_seconds <= 0:
+            raise ValueError("window_seconds must be greater than 0")
+
 
 @dataclass
 class DetectionService:
-    config: DetectionConfig
+    config: DetectionConfig = field(default_factory=DetectionConfig)
     _stream_buffer: list[LogRecord] = field(default_factory=list)
 
     def detect(self, records: list[LogRecord]) -> list[DetectedAnomaly]:
@@ -720,52 +910,81 @@ class DetectionService:
         return self.detect_from_windows(windows)
 
     def detect_from_windows(self, windows: list[WindowMetric]) -> list[DetectedAnomaly]:
-        anomalies: list[DetectedAnomaly] = []
-        by_service: dict[str, list[WindowMetric]] = {}
+        by_service: dict[str, list[WindowMetric]] = defaultdict(list)
         for window in windows:
-            by_service.setdefault(window.service, []).append(window)
+            by_service[window.service].append(window)
 
-        for service, service_windows in by_service.items():
-            values = [window.latency_p95 for window in service_windows]
-            baseline = ewma(values, self.config.alpha)
-            residuals = [value - base for value, base in zip(values, baseline)]
+        anomalies: list[DetectedAnomaly] = []
+        for service_windows in by_service.values():
+            ordered = sorted(service_windows, key=lambda item: item.bucket_start)
+            latencies = [window.latency_p95 for window in ordered]
+            baseline = ewma(latencies, self.config.alpha)
+            residuals = [
+                latency - expected
+                for latency, expected in zip(latencies, baseline, strict=True)
+            ]
             scores = z_scores(residuals)
+            active_period = False
+            previous_window: WindowMetric | None = None
 
-            for window, score in zip(service_windows, scores):
-                if score >= self.config.z_threshold:
-                    anomalies.append(
-                        DetectedAnomaly(
-                            service=service,
-                            window_seconds=window.window_seconds,
-                            bucket_start=window.bucket_start,
-                            score=round(score, 4),
-                            metric_name="latency_p95_residual",
-                            anomaly_type=_infer_anomaly_type(window),
-                            reason=f"z_score={score:.2f} >= threshold={self.config.z_threshold}",
-                        )
+            for window, score, expected in zip(ordered, scores, baseline, strict=True):
+                if previous_window is not None:
+                    gap = window.bucket_start - previous_window.bucket_start
+                    if gap > timedelta(seconds=window.window_seconds):
+                        active_period = False
+                previous_window = window
+
+                above_baseline = window.latency_p95 > expected
+                if not above_baseline:
+                    active_period = False
+                    continue
+
+                triggered = score >= self.config.z_threshold
+                if triggered:
+                    active_period = True
+                elif not active_period:
+                    continue
+
+                reason = (
+                    f"latency_p95={window.latency_p95:.2f} exceeded "
+                    f"EWMA baseline={expected:.2f}"
+                )
+                if not triggered:
+                    reason = (
+                        f"latency_p95={window.latency_p95:.2f} remains above "
+                        f"EWMA baseline={expected:.2f} during active anomaly period"
                     )
-        return anomalies
+                anomalies.append(
+                    DetectedAnomaly(
+                        service=window.service,
+                        window_seconds=window.window_seconds,
+                        bucket_start=window.bucket_start,
+                        score=float(score),
+                        metric_name="latency_p95",
+                        anomaly_type=self._infer_anomaly_type(window),
+                        reason=reason,
+                    )
+                )
+        return sorted(anomalies, key=lambda item: (item.bucket_start, item.service))
 
-    def incremental_detect(self, new_records: list[LogRecord], flush_at: datetime | None = None) -> list[DetectedAnomaly]:
+    def incremental_detect(self, new_records: list[LogRecord], flush_at: object | None = None) -> list[DetectedAnomaly]:
+        """追加新日志并基于完整缓冲区重算，flush_at 仅保留给后续流式切窗。"""
+
+        _ = flush_at
         self._stream_buffer.extend(new_records)
-        if not self._stream_buffer:
-            return []
         return self.detect(self._stream_buffer)
 
-
-def _infer_anomaly_type(window: WindowMetric) -> str:
-    if window.anomaly_types:
-        return window.anomaly_types[0]
-    if window.queue_depth_mean > 120:
-        return "queue_backlog"
-    if window.error_rate > 0.2:
-        return "transaction_conflict"
-    return "latency_spike"
+    def _infer_anomaly_type(self, window: WindowMetric) -> str:
+        if window.queue_depth_mean >= 100.0:
+            return "queue_backlog"
+        if window.error_rate >= 0.2:
+            return "transaction_conflict"
+        return "latency_spike"
 ```
 
 - [ ] **Step 6: Run detection tests**
 
-Run: `python -m pytest tests/test_detection.py -v`
+Run: `uv run pytest tests/test_detection.py -v`
 
 Expected: PASS.
 
@@ -773,10 +992,12 @@ Expected: PASS.
 
 ```bash
 git add src/aiops_agent/detection src/aiops_agent/services tests/test_detection.py
-git commit -m "feat: add statistical detection service"
+git commit -m "feat(detection): add statistical detection service"
 ```
 
 ## Task 4: Evaluation Metrics And Anomaly Parameter Grid
+
+**Evaluation scope clarification:** Task 4 keeps window-level Precision / Recall / F1 / false-positive-rate as the primary design requirement. Event/onset diagnostics may be added only as supplementary analysis if detector behavior suggests it; they should not replace the window-level metric contract in this task.
 
 **Files:**
 - Create: `src/aiops_agent/evaluation/__init__.py`
@@ -822,7 +1043,7 @@ def test_window_eval_reports_target_types():
 
 - [ ] **Step 2: Run tests and verify they fail**
 
-Run: `python -m pytest tests/test_anomaly_eval.py -v`
+Run: `uv run pytest tests/test_anomaly_eval.py -v`
 
 Expected: FAIL with missing evaluation modules.
 
@@ -873,7 +1094,7 @@ Create `src/aiops_agent/evaluation/anomaly_eval.py`:
 ```python
 from __future__ import annotations
 
-from aiops_agent.data.schemas import LogRecord
+from aiops_agent.models.schemas import LogRecord
 from aiops_agent.detection.windows import aggregate_windows
 from aiops_agent.evaluation.metrics import classification_metrics
 from aiops_agent.services.detection_service import DetectionConfig, DetectionService
@@ -935,7 +1156,7 @@ def evaluate_windows_by_type(
 
 - [ ] **Step 5: Run anomaly evaluation tests**
 
-Run: `python -m pytest tests/test_anomaly_eval.py -v`
+Run: `uv run pytest tests/test_anomaly_eval.py -v`
 
 Expected: PASS.
 
@@ -943,7 +1164,7 @@ Expected: PASS.
 
 ```bash
 git add src/aiops_agent/evaluation tests/test_anomaly_eval.py
-git commit -m "feat: add anomaly evaluation grid"
+git commit -m "feat(evaluation): add anomaly evaluation grid"
 ```
 
 ## Task 5: Command Safety And Alert Suppression
@@ -961,7 +1182,7 @@ Create `tests/test_safety_alerting.py`:
 ```python
 from datetime import datetime, timedelta, timezone
 
-from aiops_agent.data.schemas import DetectedAnomaly
+from aiops_agent.models.schemas import DetectedAnomaly
 from aiops_agent.evaluation.safety_eval import evaluate_safety_cases, safety_test_cases
 from aiops_agent.services.alert_service import AlertService
 from aiops_agent.services.safety_service import CommandSafetyService
@@ -986,12 +1207,28 @@ def test_safety_eval_has_twenty_cases_and_high_accuracy():
 def test_alert_suppression_blocks_same_root_cause_for_60_seconds():
     service = AlertService(suppression_seconds=60)
     ts = datetime(2026, 6, 5, 9, 0, tzinfo=timezone.utc)
-    anomaly = DetectedAnomaly("api-gateway", 10, ts, 3.2, "latency", "latency_spike", "test")
+    anomaly = DetectedAnomaly(
+        service="api-gateway",
+        window_seconds=10,
+        bucket_start=ts,
+        score=3.2,
+        metric_name="latency",
+        anomaly_type="latency_spike",
+        reason="test",
+    )
 
     first = service.evaluate(anomaly, root_cause="pod_cpu_saturation")
     second = service.evaluate(anomaly, root_cause="pod_cpu_saturation")
     third = service.evaluate(
-        DetectedAnomaly("api-gateway", 10, ts + timedelta(seconds=61), 3.1, "latency", "latency_spike", "test"),
+        DetectedAnomaly(
+            service="api-gateway",
+            window_seconds=10,
+            bucket_start=ts + timedelta(seconds=61),
+            score=3.1,
+            metric_name="latency",
+            anomaly_type="latency_spike",
+            reason="test",
+        ),
         root_cause="pod_cpu_saturation",
     )
 
@@ -1002,7 +1239,7 @@ def test_alert_suppression_blocks_same_root_cause_for_60_seconds():
 
 - [ ] **Step 2: Run tests and verify they fail**
 
-Run: `python -m pytest tests/test_safety_alerting.py -v`
+Run: `uv run pytest tests/test_safety_alerting.py -v`
 
 Expected: FAIL with missing services.
 
@@ -1015,7 +1252,7 @@ from __future__ import annotations
 
 import re
 
-from aiops_agent.data.schemas import SafetyResult
+from aiops_agent.models.schemas import SafetyResult
 
 
 class CommandSafetyService:
@@ -1049,14 +1286,30 @@ class CommandSafetyService:
         stripped = command.strip()
         for pattern in self.danger_patterns:
             if pattern.search(stripped):
-                return SafetyResult(stripped, "DANGER", f"matched danger pattern: {pattern.pattern}")
+                return SafetyResult(
+                    command=stripped,
+                    level="DANGER",
+                    reason=f"matched danger pattern: {pattern.pattern}",
+                )
         for pattern in self.caution_patterns:
             if pattern.search(stripped):
-                return SafetyResult(stripped, "CAUTION", f"matched caution pattern: {pattern.pattern}")
+                return SafetyResult(
+                    command=stripped,
+                    level="CAUTION",
+                    reason=f"matched caution pattern: {pattern.pattern}",
+                )
         for pattern in self.safe_patterns:
             if pattern.search(stripped):
-                return SafetyResult(stripped, "SAFE", f"matched safe pattern: {pattern.pattern}")
-        return SafetyResult(stripped, "CAUTION", "unknown command requires manual review")
+                return SafetyResult(
+                    command=stripped,
+                    level="SAFE",
+                    reason=f"matched safe pattern: {pattern.pattern}",
+                )
+        return SafetyResult(
+            command=stripped,
+            level="CAUTION",
+            reason="unknown command requires manual review",
+        )
 
     def classify_many(self, commands: list[str]) -> list[SafetyResult]:
         return [self.classify(command) for command in commands]
@@ -1072,7 +1325,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import datetime
 
-from aiops_agent.data.schemas import DetectedAnomaly
+from aiops_agent.models.schemas import DetectedAnomaly
 
 
 @dataclass
@@ -1142,7 +1395,7 @@ def evaluate_safety_cases(service: CommandSafetyService, cases: list[dict[str, s
 
 - [ ] **Step 6: Run safety and alert tests**
 
-Run: `python -m pytest tests/test_safety_alerting.py -v`
+Run: `uv run pytest tests/test_safety_alerting.py -v`
 
 Expected: PASS.
 
@@ -1150,7 +1403,7 @@ Expected: PASS.
 
 ```bash
 git add src/aiops_agent/services/safety_service.py src/aiops_agent/services/alert_service.py src/aiops_agent/evaluation/safety_eval.py tests/test_safety_alerting.py
-git commit -m "feat: add safety grading and alert suppression"
+git commit -m "feat(safety): add safety grading and alert suppression"
 ```
 
 ## Task 6: Kubernetes RAG Corpus, Chunking, Retrieval, And Recall@5
@@ -1201,7 +1454,7 @@ def test_rag_eval_returns_recall_for_two_strategies():
 
 - [ ] **Step 2: Run tests and verify they fail**
 
-Run: `python -m pytest tests/test_rag.py -v`
+Run: `uv run pytest tests/test_rag.py -v`
 
 Expected: FAIL with missing RAG modules.
 
@@ -1289,15 +1542,9 @@ Create `src/aiops_agent/rag/chunkers.py`:
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass
 
 
-@dataclass(frozen=True)
-class TextChunk:
-    chunk_id: str
-    title: str
-    text: str
-    source: str
+from aiops_agent.models.schemas import TextChunk
 
 
 def fixed_char_chunks(docs: list[dict[str, str]], chunk_size: int = 800, overlap: int = 120) -> list[TextChunk]:
@@ -1356,11 +1603,7 @@ from collections import Counter
 from math import sqrt
 from pathlib import Path
 
-import chromadb
-from sentence_transformers import SentenceTransformer
-
-from aiops_agent.data.schemas import RetrievedChunk
-from aiops_agent.rag.chunkers import TextChunk
+from aiops_agent.models.schemas import RetrievedChunk, TextChunk
 
 
 class ChromaVectorStore:
@@ -1369,6 +1612,11 @@ class ChromaVectorStore:
     def __init__(self, persist_dir: Path, collection_name: str = "k8s_docs"):
         self.persist_dir = persist_dir
         self.persist_dir.mkdir(parents=True, exist_ok=True)
+
+        # 重依赖延迟到 ChromaVectorStore 实例化阶段，单元测试导入 SimpleVectorStore 不会下载模型。
+        import chromadb
+        from sentence_transformers import SentenceTransformer
+
         self.model = SentenceTransformer("all-MiniLM-L6-v2")
         self.client = chromadb.PersistentClient(path=str(self.persist_dir))
         self.collection = self.client.get_or_create_collection(collection_name)
@@ -1422,7 +1670,13 @@ class SimpleVectorStore:
             scored.append((_cosine(query_vector, vector), chunk))
         scored.sort(key=lambda item: item[0], reverse=True)
         return [
-            RetrievedChunk(chunk.chunk_id, chunk.title, chunk.text, chunk.source, round(score, 4))
+            RetrievedChunk(
+                chunk_id=chunk.chunk_id,
+                title=chunk.title,
+                text=chunk.text,
+                source=chunk.source,
+                score=round(score, 4),
+            )
             for score, chunk in scored[:top_k]
         ]
 
@@ -1449,7 +1703,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from aiops_agent.data.schemas import DetectedAnomaly, RetrievedChunk
+from aiops_agent.models.schemas import DetectedAnomaly, RetrievedChunk
 from aiops_agent.rag.chunkers import semantic_chunks
 from aiops_agent.rag.k8s_loader import load_curated_k8s_docs
 from aiops_agent.rag.vector_store import ChromaVectorStore
@@ -1527,7 +1781,7 @@ def evaluate_chunking_strategies(docs: list[dict[str, str]], queries: list[dict[
 
 - [ ] **Step 7: Run RAG tests**
 
-Run: `python -m pytest tests/test_rag.py -v`
+Run: `uv run pytest tests/test_rag.py -v`
 
 Expected: PASS.
 
@@ -1535,7 +1789,7 @@ Expected: PASS.
 
 ```bash
 git add src/aiops_agent/rag src/aiops_agent/services/rag_service.py src/aiops_agent/evaluation/rag_eval.py tests/test_rag.py
-git commit -m "feat: add Kubernetes rag evaluation"
+git commit -m "feat(rag): add Kubernetes rag evaluation"
 ```
 
 ## Task 7: Gemini Diagnosis Service And LangGraph Workflow
@@ -1586,7 +1840,7 @@ def test_graph_runs_full_diagnosis_and_blocks_danger():
 
 - [ ] **Step 2: Run graph test and verify it fails**
 
-Run: `python -m pytest tests/test_graph.py -v`
+Run: `uv run pytest tests/test_graph.py -v`
 
 Expected: FAIL with missing graph modules.
 
@@ -1636,7 +1890,7 @@ Create `src/aiops_agent/services/diagnosis_service.py`:
 ```python
 from __future__ import annotations
 
-from aiops_agent.data.schemas import DetectedAnomaly, RetrievedChunk
+from aiops_agent.models.schemas import DetectedAnomaly, RetrievedChunk
 
 
 class DiagnosisService:
@@ -1684,7 +1938,7 @@ from __future__ import annotations
 
 from typing import Any, TypedDict
 
-from aiops_agent.data.schemas import DetectedAnomaly, LogRecord, RetrievedChunk, SafetyResult
+from aiops_agent.models.schemas import DetectedAnomaly, LogRecord, RetrievedChunk, SafetyResult
 
 
 class AIOpsDiagnosisState(TypedDict, total=False):
@@ -1800,7 +2054,7 @@ def build_diagnosis_graph(llm_service: GeminiLLMService | None = None):
 
 - [ ] **Step 6: Run graph tests**
 
-Run: `python -m pytest tests/test_graph.py -v`
+Run: `uv run pytest tests/test_graph.py -v`
 
 Expected: PASS.
 
@@ -1808,7 +2062,7 @@ Expected: PASS.
 
 ```bash
 git add src/aiops_agent/services/llm_service.py src/aiops_agent/services/diagnosis_service.py src/aiops_agent/graph tests/test_graph.py
-git commit -m "feat: add LangGraph diagnosis workflow"
+git commit -m "feat(graph): add LangGraph diagnosis workflow"
 ```
 
 ## Task 8: CLI, API, And Streaming Interfaces
@@ -1849,7 +2103,7 @@ def test_evaluate_safety_command_prints_accuracy(capsys):
 
 - [ ] **Step 2: Run tests and verify they fail**
 
-Run: `python -m pytest tests/test_cli_smoke.py -v`
+Run: `uv run pytest tests/test_cli_smoke.py -v`
 
 Expected: FAIL with missing interfaces.
 
@@ -2035,7 +2289,7 @@ def run_stream(path: Path, window_seconds: int, emit_interval: float) -> None:
 
 - [ ] **Step 5: Run CLI tests**
 
-Run: `python -m pytest tests/test_cli_smoke.py -v`
+Run: `uv run pytest tests/test_cli_smoke.py -v`
 
 Expected: PASS.
 
@@ -2043,7 +2297,7 @@ Expected: PASS.
 
 ```bash
 git add pyproject.toml src/aiops_agent/interfaces tests/test_cli_smoke.py
-git commit -m "feat: add cli api and stream interfaces"
+git commit -m "feat(interface): add cli api and stream interfaces"
 ```
 
 ## Task 9: Report Writer And Full Evaluation Command
@@ -2077,7 +2331,7 @@ def test_write_full_report_creates_markdown(tmp_path):
 
 - [ ] **Step 2: Run test and verify it fails**
 
-Run: `python -m pytest tests/test_report_writer.py -v`
+Run: `uv run pytest tests/test_report_writer.py -v`
 
 Expected: FAIL with missing `report_writer.py`.
 
@@ -2167,7 +2421,7 @@ def _write_figures(settings: Settings, grid: list[dict], window_rows: list[dict]
 
 - [ ] **Step 4: Run report writer test**
 
-Run: `python -m pytest tests/test_report_writer.py -v`
+Run: `uv run pytest tests/test_report_writer.py -v`
 
 Expected: PASS.
 
@@ -2175,7 +2429,7 @@ Expected: PASS.
 
 ```bash
 git add src/aiops_agent/evaluation/report_writer.py tests/test_report_writer.py
-git commit -m "feat: add evaluation report writer"
+git commit -m "feat(report): add evaluation report writer"
 ```
 
 ## Task 10: Documentation, Local Environment, And Final Verification
@@ -2198,10 +2452,7 @@ Create `README.md`:
 ## Setup
 
 ```bash
-python -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-pip install -e .
+uv sync
 cp .env.example .env
 ```
 
@@ -2211,12 +2462,12 @@ cp .env.example .env
 ## Commands
 
 ```bash
-python -m aiops_agent.interfaces.cli generate-data
-python -m aiops_agent.interfaces.cli build-rag
-python -m aiops_agent.interfaces.cli evaluate
-python -m aiops_agent.interfaces.cli diagnose data/logs/test_logs.jsonl --limit 80
-python -m aiops_agent.interfaces.cli stream data/logs/test_logs.jsonl --window 10 --emit-interval 1
-uvicorn aiops_agent.interfaces.api:app --reload
+uv run python -m aiops_agent.interfaces.cli generate-data
+uv run python -m aiops_agent.interfaces.cli build-rag
+uv run python -m aiops_agent.interfaces.cli evaluate
+uv run python -m aiops_agent.interfaces.cli diagnose data/logs/test_logs.jsonl --limit 80
+uv run python -m aiops_agent.interfaces.cli stream data/logs/test_logs.jsonl --window 10 --emit-interval 1
+uv run uvicorn aiops_agent.interfaces.api:app --reload
 ```
 
 ## Architecture
@@ -2226,6 +2477,10 @@ LangGraph 负责编排：检测 -> RAG -> Gemini -> 命令安全分级 -> 告警
 ## Evaluation
 
 `reports/evaluation.md` 包含异常检测参数敏感性、窗口粒度对比、RAG Recall@5、命令安全分级准确率、告警抑制和 10 倍日志量扩容分析。
+
+## requirements.txt
+
+依赖以 `pyproject.toml` 和 `uv.lock` 为准；`requirements.txt` 由 `uv export` 生成，仅作为交付物。
 ```
 
 - [ ] **Step 2: Write local `.env` without committing it**
@@ -2233,7 +2488,7 @@ LangGraph 负责编排：检测 -> RAG -> Gemini -> 命令安全分级 -> 告警
 Run this command from the project root. It prompts without echoing the key:
 
 ```bash
-python - <<'PY'
+uv run python - <<'PY'
 from getpass import getpass
 from pathlib import Path
 
@@ -2246,7 +2501,7 @@ Expected: `.env` exists and `git status --short` does not show `.env`.
 
 - [ ] **Step 3: Run full tests**
 
-Run: `python -m pytest -v`
+Run: `uv run pytest -v`
 
 Expected: PASS for all tests.
 
@@ -2255,10 +2510,10 @@ Expected: PASS for all tests.
 Run:
 
 ```bash
-python -m aiops_agent.interfaces.cli generate-data
-python -m aiops_agent.interfaces.cli build-rag
-python -m aiops_agent.interfaces.cli evaluate
-python -m aiops_agent.interfaces.cli evaluate-safety
+uv run python -m aiops_agent.interfaces.cli generate-data
+uv run python -m aiops_agent.interfaces.cli build-rag
+uv run python -m aiops_agent.interfaces.cli evaluate
+uv run python -m aiops_agent.interfaces.cli evaluate-safety
 ```
 
 Expected:
@@ -2272,7 +2527,7 @@ Expected:
 Run:
 
 ```bash
-python -m aiops_agent.interfaces.cli diagnose data/logs/test_logs.jsonl --limit 120
+uv run python -m aiops_agent.interfaces.cli diagnose data/logs/test_logs.jsonl --limit 120
 ```
 
 Expected:
@@ -2287,7 +2542,7 @@ Expected:
 Run:
 
 ```bash
-python -m aiops_agent.interfaces.cli stream data/logs/test_logs.jsonl --window 10 --emit-interval 0.1
+uv run python -m aiops_agent.interfaces.cli stream data/logs/test_logs.jsonl --window 10 --emit-interval 0.1
 ```
 
 Expected:
@@ -2296,11 +2551,25 @@ Expected:
 - Prints `alert_decision`.
 - Exits with Ctrl-C during manual smoke run.
 
-- [ ] **Step 7: Commit docs**
+- [ ] **Step 7: Export requirements.txt from uv lock**
+
+Run:
 
 ```bash
-git add README.md .env.example
-git commit -m "docs: add usage and evaluation guide"
+uv export --format requirements.txt --no-hashes --no-emit-project --output-file requirements.txt
+```
+
+Expected:
+
+- `requirements.txt` exists.
+- The file is generated from `uv.lock`, not hand-written.
+- It contains runtime dependencies such as `langgraph`, `google-genai`, and `fastapi`.
+
+- [ ] **Step 8: Commit docs and exported requirements**
+
+```bash
+git add README.md .env.example requirements.txt
+git commit -m "docs(readme): add usage and exported requirements"
 ```
 
 ## Self-Review Checklist
