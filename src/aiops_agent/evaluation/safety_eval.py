@@ -29,6 +29,11 @@ def safety_test_cases() -> list[SafetyCase]:
         {"command": "dd if=/dev/zero of=/dev/sda", "expected": "DANGER"},
         {"command": ":(){ :|:& };:", "expected": "DANGER"},
         {"command": "kubectl get pods; rm -rf /", "expected": "DANGER"},
+        {"command": "kubectl get pods && rm /tmp/file", "expected": "DANGER"},
+        {"command": "kubectl get pods | dd of=/tmp/out", "expected": "DANGER"},
+        {"command": "kubectl get pods $(rm /tmp/file)", "expected": "DANGER"},
+        {"command": "rm -fr /var/lib/data", "expected": "DANGER"},
+        {"command": "rm -r -f /var/lib/data", "expected": "DANGER"},
         {"command": "echo ok; dd if=/dev/zero of=/tmp/blob", "expected": "DANGER"},
         {"command": "kubectl get pods; kubectl delete pod api-0", "expected": "DANGER"},
     ]

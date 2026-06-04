@@ -24,7 +24,7 @@ class AlertService:
 
         if previous is not None:
             elapsed = (anomaly.bucket_start - previous).total_seconds()
-            suppressed = 0 <= elapsed < self.suppression_seconds
+            suppressed = 0 <= elapsed <= self.suppression_seconds
 
         # 只在实际发出告警时刷新时间戳，避免持续噪声把抑制窗口无限延长。
         if not suppressed:
