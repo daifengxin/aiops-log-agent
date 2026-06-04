@@ -5,7 +5,7 @@ from datetime import datetime
 
 import numpy as np
 
-from aiops_agent.data.schemas import LogRecord, WindowMetric
+from aiops_agent.models.schemas import LogRecord, WindowMetric
 
 
 def aggregate_windows(

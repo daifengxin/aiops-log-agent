@@ -13,10 +13,11 @@ def z_scores(values: list[float]) -> list[float]:
     for index in range(1, len(values)):
         history = np.array(values[:index], dtype=float)
         std = float(np.std(history))
+        mean = float(np.mean(history))
         if std == 0.0:
-            scores.append(0.0)
+            # 历史完全平坦时没有可用方差；非零偏移直接用绝对偏移量标记尖峰。
+            scores.append(abs(float(values[index]) - mean))
             continue
 
-        mean = float(np.mean(history))
         scores.append(abs((float(values[index]) - mean) / std))
     return scores

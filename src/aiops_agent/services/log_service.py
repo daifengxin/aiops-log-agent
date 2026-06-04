@@ -4,7 +4,7 @@ import json
 from datetime import datetime
 from pathlib import Path
 
-from aiops_agent.data.schemas import LogRecord
+from aiops_agent.models.schemas import LogRecord
 
 
 class LogService:
@@ -32,7 +32,20 @@ class LogService:
                         queue_depth=int(row["queue_depth"]),
                         dependency=str(row["dependency"]),
                         anomaly_type=str(row["anomaly_type"]),
-                        is_anomaly=bool(row["is_anomaly"]),
+                        is_anomaly=_parse_bool(row["is_anomaly"]),
                     )
                 )
         return records
+
+
+def _parse_bool(value: object) -> bool:
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        normalized = value.strip().lower()
+        if normalized == "true":
+            return True
+        if normalized == "false":
+            return False
+
+    raise ValueError(f"is_anomaly must be a boolean value, got {value!r}")

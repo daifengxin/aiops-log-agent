@@ -19,7 +19,7 @@
 - `.env.example`: documents `GEMINI_API_KEY` and `GEMINI_MODEL`.
 - `README.md`: setup, commands, architecture, evaluation instructions.
 - `src/aiops_agent/config.py`: loads paths and environment config.
-- `src/aiops_agent/data/schemas.py`: dataclasses for logs, anomalies, chunks, safety labels, evaluation rows.
+- `src/aiops_agent/models/schemas.py`: Pydantic models for logs, anomalies, chunks, safety labels, evaluation rows.
 - `src/aiops_agent/data/generator.py`: deterministic synthetic JSONL log generation.
 - `src/aiops_agent/detection/ewma.py`: EWMA pure functions.
 - `src/aiops_agent/detection/zscore.py`: Z-Score pure functions.
@@ -275,7 +275,8 @@ git commit -m "chore(config): scaffold project config"
 
 **Files:**
 - Create: `src/aiops_agent/data/__init__.py`
-- Create: `src/aiops_agent/data/schemas.py`
+- Create: `src/aiops_agent/models/__init__.py`
+- Create: `src/aiops_agent/models/schemas.py`
 - Create: `src/aiops_agent/data/generator.py`
 - Test: `tests/test_data_generator.py`
 
@@ -323,22 +324,30 @@ Expected: FAIL with import errors for `aiops_agent.data.generator`.
 Create `src/aiops_agent/data/__init__.py`:
 
 ```python
-"""Data generation and schema helpers."""
+"""Data generation helpers."""
 ```
 
-Create `src/aiops_agent/data/schemas.py`:
+Create `src/aiops_agent/models/__init__.py`:
+
+```python
+"""Pydantic DTO and domain models."""
+```
+
+Create `src/aiops_agent/models/schemas.py`:
 
 ```python
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass
 from datetime import datetime
 from typing import Any
 
+from pydantic import BaseModel, ConfigDict, StrictBool
 
-@dataclass(frozen=True)
-class LogRecord:
+
+class LogRecord(BaseModel):
     """单条微服务日志，包含检测指标和人工标注字段。"""
+
+    model_config = ConfigDict(frozen=True)
 
     timestamp: datetime
     service: str
@@ -352,17 +361,18 @@ class LogRecord:
     queue_depth: int
     dependency: str
     anomaly_type: str
-    is_anomaly: bool
+    is_anomaly: StrictBool
 
     def to_json_dict(self) -> dict[str, Any]:
-        row = asdict(self)
+        row = self.model_dump()
         row["timestamp"] = self.timestamp.isoformat()
         return row
 
 
-@dataclass(frozen=True)
-class WindowMetric:
+class WindowMetric(BaseModel):
     """聚合后的时间窗口指标。"""
+
+    model_config = ConfigDict(frozen=True)
 
     service: str
     window_seconds: int
@@ -371,13 +381,14 @@ class WindowMetric:
     latency_p95: float
     error_rate: float
     queue_depth_mean: float
-    is_anomaly: bool
+    is_anomaly: StrictBool
     anomaly_types: tuple[str, ...]
 
 
-@dataclass(frozen=True)
-class DetectedAnomaly:
+class DetectedAnomaly(BaseModel):
     """检测器输出的异常窗口。"""
+
+    model_config = ConfigDict(frozen=True)
 
     service: str
     window_seconds: int
@@ -388,9 +399,10 @@ class DetectedAnomaly:
     reason: str
 
 
-@dataclass(frozen=True)
-class RetrievedChunk:
+class RetrievedChunk(BaseModel):
     """RAG 检索返回的文档片段。"""
+
+    model_config = ConfigDict(frozen=True)
 
     chunk_id: str
     title: str
@@ -399,9 +411,10 @@ class RetrievedChunk:
     score: float
 
 
-@dataclass(frozen=True)
-class SafetyResult:
+class SafetyResult(BaseModel):
     """命令安全分级结果。"""
+
+    model_config = ConfigDict(frozen=True)
 
     command: str
     level: str
@@ -420,7 +433,7 @@ import random
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-from aiops_agent.data.schemas import LogRecord
+from aiops_agent.models.schemas import LogRecord
 
 
 SERVICES = ["api-gateway", "auth-service", "business-service", "data-service", "message-queue"]
@@ -658,7 +671,7 @@ from datetime import datetime, timezone
 
 import numpy as np
 
-from aiops_agent.data.schemas import LogRecord, WindowMetric
+from aiops_agent.models.schemas import LogRecord, WindowMetric
 
 
 def aggregate_windows(records: list[LogRecord], window_seconds: int) -> list[WindowMetric]:
@@ -707,7 +720,7 @@ import json
 from datetime import datetime
 from pathlib import Path
 
-from aiops_agent.data.schemas import LogRecord
+from aiops_agent.models.schemas import LogRecord
 
 
 class LogService:
@@ -748,7 +761,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import datetime
 
-from aiops_agent.data.schemas import DetectedAnomaly, LogRecord, WindowMetric
+from aiops_agent.models.schemas import DetectedAnomaly, LogRecord, WindowMetric
 from aiops_agent.detection.ewma import ewma
 from aiops_agent.detection.windows import aggregate_windows
 from aiops_agent.detection.zscore import z_scores
@@ -924,7 +937,7 @@ Create `src/aiops_agent/evaluation/anomaly_eval.py`:
 ```python
 from __future__ import annotations
 
-from aiops_agent.data.schemas import LogRecord
+from aiops_agent.models.schemas import LogRecord
 from aiops_agent.detection.windows import aggregate_windows
 from aiops_agent.evaluation.metrics import classification_metrics
 from aiops_agent.services.detection_service import DetectionConfig, DetectionService
@@ -1012,7 +1025,7 @@ Create `tests/test_safety_alerting.py`:
 ```python
 from datetime import datetime, timedelta, timezone
 
-from aiops_agent.data.schemas import DetectedAnomaly
+from aiops_agent.models.schemas import DetectedAnomaly
 from aiops_agent.evaluation.safety_eval import evaluate_safety_cases, safety_test_cases
 from aiops_agent.services.alert_service import AlertService
 from aiops_agent.services.safety_service import CommandSafetyService
@@ -1037,12 +1050,28 @@ def test_safety_eval_has_twenty_cases_and_high_accuracy():
 def test_alert_suppression_blocks_same_root_cause_for_60_seconds():
     service = AlertService(suppression_seconds=60)
     ts = datetime(2026, 6, 5, 9, 0, tzinfo=timezone.utc)
-    anomaly = DetectedAnomaly("api-gateway", 10, ts, 3.2, "latency", "latency_spike", "test")
+    anomaly = DetectedAnomaly(
+        service="api-gateway",
+        window_seconds=10,
+        bucket_start=ts,
+        score=3.2,
+        metric_name="latency",
+        anomaly_type="latency_spike",
+        reason="test",
+    )
 
     first = service.evaluate(anomaly, root_cause="pod_cpu_saturation")
     second = service.evaluate(anomaly, root_cause="pod_cpu_saturation")
     third = service.evaluate(
-        DetectedAnomaly("api-gateway", 10, ts + timedelta(seconds=61), 3.1, "latency", "latency_spike", "test"),
+        DetectedAnomaly(
+            service="api-gateway",
+            window_seconds=10,
+            bucket_start=ts + timedelta(seconds=61),
+            score=3.1,
+            metric_name="latency",
+            anomaly_type="latency_spike",
+            reason="test",
+        ),
         root_cause="pod_cpu_saturation",
     )
 
@@ -1066,7 +1095,7 @@ from __future__ import annotations
 
 import re
 
-from aiops_agent.data.schemas import SafetyResult
+from aiops_agent.models.schemas import SafetyResult
 
 
 class CommandSafetyService:
@@ -1100,14 +1129,30 @@ class CommandSafetyService:
         stripped = command.strip()
         for pattern in self.danger_patterns:
             if pattern.search(stripped):
-                return SafetyResult(stripped, "DANGER", f"matched danger pattern: {pattern.pattern}")
+                return SafetyResult(
+                    command=stripped,
+                    level="DANGER",
+                    reason=f"matched danger pattern: {pattern.pattern}",
+                )
         for pattern in self.caution_patterns:
             if pattern.search(stripped):
-                return SafetyResult(stripped, "CAUTION", f"matched caution pattern: {pattern.pattern}")
+                return SafetyResult(
+                    command=stripped,
+                    level="CAUTION",
+                    reason=f"matched caution pattern: {pattern.pattern}",
+                )
         for pattern in self.safe_patterns:
             if pattern.search(stripped):
-                return SafetyResult(stripped, "SAFE", f"matched safe pattern: {pattern.pattern}")
-        return SafetyResult(stripped, "CAUTION", "unknown command requires manual review")
+                return SafetyResult(
+                    command=stripped,
+                    level="SAFE",
+                    reason=f"matched safe pattern: {pattern.pattern}",
+                )
+        return SafetyResult(
+            command=stripped,
+            level="CAUTION",
+            reason="unknown command requires manual review",
+        )
 
     def classify_many(self, commands: list[str]) -> list[SafetyResult]:
         return [self.classify(command) for command in commands]
@@ -1123,7 +1168,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import datetime
 
-from aiops_agent.data.schemas import DetectedAnomaly
+from aiops_agent.models.schemas import DetectedAnomaly
 
 
 @dataclass
@@ -1410,7 +1455,7 @@ from pathlib import Path
 import chromadb
 from sentence_transformers import SentenceTransformer
 
-from aiops_agent.data.schemas import RetrievedChunk
+from aiops_agent.models.schemas import RetrievedChunk
 from aiops_agent.rag.chunkers import TextChunk
 
 
@@ -1473,7 +1518,13 @@ class SimpleVectorStore:
             scored.append((_cosine(query_vector, vector), chunk))
         scored.sort(key=lambda item: item[0], reverse=True)
         return [
-            RetrievedChunk(chunk.chunk_id, chunk.title, chunk.text, chunk.source, round(score, 4))
+            RetrievedChunk(
+                chunk_id=chunk.chunk_id,
+                title=chunk.title,
+                text=chunk.text,
+                source=chunk.source,
+                score=round(score, 4),
+            )
             for score, chunk in scored[:top_k]
         ]
 
@@ -1500,7 +1551,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from aiops_agent.data.schemas import DetectedAnomaly, RetrievedChunk
+from aiops_agent.models.schemas import DetectedAnomaly, RetrievedChunk
 from aiops_agent.rag.chunkers import semantic_chunks
 from aiops_agent.rag.k8s_loader import load_curated_k8s_docs
 from aiops_agent.rag.vector_store import ChromaVectorStore
@@ -1687,7 +1738,7 @@ Create `src/aiops_agent/services/diagnosis_service.py`:
 ```python
 from __future__ import annotations
 
-from aiops_agent.data.schemas import DetectedAnomaly, RetrievedChunk
+from aiops_agent.models.schemas import DetectedAnomaly, RetrievedChunk
 
 
 class DiagnosisService:
@@ -1735,7 +1786,7 @@ from __future__ import annotations
 
 from typing import Any, TypedDict
 
-from aiops_agent.data.schemas import DetectedAnomaly, LogRecord, RetrievedChunk, SafetyResult
+from aiops_agent.models.schemas import DetectedAnomaly, LogRecord, RetrievedChunk, SafetyResult
 
 
 class AIOpsDiagnosisState(TypedDict, total=False):

@@ -1,13 +1,15 @@
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass
 from datetime import datetime
 from typing import Any
 
+from pydantic import BaseModel, ConfigDict, StrictBool
 
-@dataclass(frozen=True)
-class LogRecord:
+
+class LogRecord(BaseModel):
     """单条微服务日志，包含检测指标和人工标注字段。"""
+
+    model_config = ConfigDict(frozen=True)
 
     timestamp: datetime
     service: str
@@ -21,17 +23,18 @@ class LogRecord:
     queue_depth: int
     dependency: str
     anomaly_type: str
-    is_anomaly: bool
+    is_anomaly: StrictBool
 
     def to_json_dict(self) -> dict[str, Any]:
-        row = asdict(self)
+        row = self.model_dump()
         row["timestamp"] = self.timestamp.isoformat()
         return row
 
 
-@dataclass(frozen=True)
-class WindowMetric:
+class WindowMetric(BaseModel):
     """聚合后的时间窗口指标。"""
+
+    model_config = ConfigDict(frozen=True)
 
     service: str
     window_seconds: int
@@ -40,13 +43,14 @@ class WindowMetric:
     latency_p95: float
     error_rate: float
     queue_depth_mean: float
-    is_anomaly: bool
+    is_anomaly: StrictBool
     anomaly_types: tuple[str, ...]
 
 
-@dataclass(frozen=True)
-class DetectedAnomaly:
+class DetectedAnomaly(BaseModel):
     """检测器输出的异常窗口。"""
+
+    model_config = ConfigDict(frozen=True)
 
     service: str
     window_seconds: int
@@ -57,9 +61,10 @@ class DetectedAnomaly:
     reason: str
 
 
-@dataclass(frozen=True)
-class RetrievedChunk:
+class RetrievedChunk(BaseModel):
     """RAG 检索返回的文档片段。"""
+
+    model_config = ConfigDict(frozen=True)
 
     chunk_id: str
     title: str
@@ -68,9 +73,10 @@ class RetrievedChunk:
     score: float
 
 
-@dataclass(frozen=True)
-class SafetyResult:
+class SafetyResult(BaseModel):
     """命令安全分级结果。"""
+
+    model_config = ConfigDict(frozen=True)
 
     command: str
     level: str
