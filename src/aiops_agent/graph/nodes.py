@@ -47,16 +47,16 @@ class DiagnosisGraphNodes:
     def classify_commands(self, state: AIOpsDiagnosisState) -> dict[str, Any]:
         commands = state.get("llm_report", {}).get("recommended_commands", [])
         results = self.safety_service.classify_many([str(command) for command in commands])
-        # 图只把白名单读命令放入 safe_commands，其余命令留给人工复核或阻断。
-        safe = [item for item in results if item.level == "SAFE"]
-        blocked = [item for item in results if item.level != "SAFE"]
+        # SAFE 可直接执行，CAUTION 留在安全侧供人工复核；只有 DANGER 进入阻断列表。
+        safe = [item for item in results if item.level in {"SAFE", "CAUTION"}]
+        blocked = [item for item in results if item.level == "DANGER"]
         return {"safe_commands": safe, "blocked_commands": blocked}
 
     def suppress_alerts(self, state: AIOpsDiagnosisState) -> dict[str, Any]:
         anomalies = state.get("detected_anomalies", [])
         root_causes = state.get("llm_report", {}).get("likely_root_causes", [])
         if not anomalies:
-            return {"alert_decision": {"suppressed": True, "reason": "no_detected_anomaly"}}
+            return {"alert_decision": {"suppressed": False, "reason": "no_detected_anomaly"}}
 
         root_cause = str(root_causes[0]) if root_causes else "unknown"
         return {
