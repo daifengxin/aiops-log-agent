@@ -27,6 +27,7 @@ class DiagnosisService:
         chunks: list[RetrievedChunk],
     ) -> dict[str, Any]:
         report = self.llm_service.generate_json(self.build_prompt(anomalies, chunks))
+        self._normalize_report(report)
         self._validate_report(report)
         return report
 
@@ -40,10 +41,20 @@ class DiagnosisService:
         # 提示词固定输出 JSON，后续节点依赖 recommended_commands 做安全分级。
         return (
             "You are an AIOps diagnosis assistant. Return only JSON with keys "
-            "anomaly_type, likely_root_causes, evidence, recommended_commands, confidence.\n"
+            "anomaly_type, likely_root_causes, evidence, recommended_commands, confidence. "
+            "confidence must be a JSON number from 0 to 1, not a string or percent.\n"
             f"anomalies: {json.dumps(anomaly_rows, ensure_ascii=False)}\n"
             f"retrieved_chunks: {json.dumps(chunk_rows, ensure_ascii=False)}"
         )
+
+    def _normalize_report(self, report: dict[str, Any]) -> None:
+        confidence = report.get("confidence")
+        if isinstance(confidence, str):
+            value = confidence.strip()
+            if value.endswith("%"):
+                report["confidence"] = float(value.removesuffix("%").strip()) / 100
+                return
+            report["confidence"] = float(value)
 
     def _validate_report(self, report: dict[str, Any]) -> None:
         missing = REQUIRED_REPORT_KEYS - report.keys()
