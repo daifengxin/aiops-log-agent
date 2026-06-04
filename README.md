@@ -44,6 +44,8 @@ LangGraph 编排流程：检测 -> RAG -> Gemini -> 命令安全分级 -> 告警
 
 `reports/evaluation.md` 由 `evaluate --all` 生成，包含异常检测参数敏感性、多粒度窗口对比、RAG Chunking Recall@5、命令安全准确率、告警抑制说明和 10 倍日志量扩容分析。
 
+离线评测不调用 Gemini，也不伪造 LLM 诊断质量分数。真实诊断报告的结构由 `DiagnosisService` 校验，命令建议会继续进入 SAFE / CAUTION / DANGER 分级；语义质量和 grounding 需要配置 `GEMINI_API_KEY` 后通过 `diagnose` 或 `/diagnose` 做真实验收。
+
 ## requirements.txt
 
 依赖以 `pyproject.toml` 和 `uv.lock` 为准；`requirements.txt` 由 `uv export` 生成，仅作为交付物。
