@@ -1,5 +1,6 @@
 from aiops_agent.data.generator import generate_logs
 from aiops_agent.graph.builder import build_diagnosis_graph
+from aiops_agent.graph.nodes import DiagnosisGraphNodes
 from aiops_agent.models.schemas import RetrievedChunk
 from aiops_agent.services.llm_service import GeminiLLMService
 
@@ -16,6 +17,7 @@ class FakeLLMService(GeminiLLMService):
             "evidence": ["api-gateway latency p95 exceeded EWMA baseline"],
             "recommended_commands": [
                 "kubectl get pods -n prod",
+                "kubectl rollout restart deployment/api",
                 "kubectl delete pod bad-pod -n prod",
             ],
             "confidence": 0.82,
@@ -50,6 +52,20 @@ def test_diagnosis_graph_uses_fake_llm_and_classifies_commands(monkeypatch):
 
     assert result["llm_report"]["confidence"] == 0.82
     assert any(item.level == "SAFE" for item in result["safe_commands"])
+    assert any(item.level == "CAUTION" for item in result["safe_commands"])
     assert any(item.level == "DANGER" for item in result["blocked_commands"])
+    assert all(item.level != "CAUTION" for item in result["blocked_commands"])
     assert result["alert_decision"]
     assert "suppressed" in result["alert_decision"]
+
+
+def test_suppress_alerts_without_anomaly_does_not_mark_suppressed():
+    nodes = DiagnosisGraphNodes(
+        llm_service=FakeLLMService(),
+        rag_service=FakeRAGService(),
+    )
+
+    result = nodes.suppress_alerts({"detected_anomalies": []})
+
+    assert result["alert_decision"]["suppressed"] is False
+    assert result["alert_decision"]["reason"] == "no_detected_anomaly"
