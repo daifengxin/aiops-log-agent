@@ -22,6 +22,9 @@ dependencies = [
     "uvicorn>=0.30.0",
 ]
 
+[project.scripts]
+aiops-agent = "aiops_agent.interfaces.cli:main"
+
 [dependency-groups]
 dev = ["pytest>=8.3.0"]
 
