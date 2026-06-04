@@ -23,9 +23,9 @@ class Settings:
 
     @classmethod
     def from_env(cls, project_root: Path | None = None) -> "Settings":
-        load_dotenv()
         root = project_root or Path.cwd()
         # 以项目根目录为基准派生所有默认路径，避免调用方依赖硬编码目录。
+        load_dotenv(root / ".env")
         data_dir = root / "data"
         return cls(
             project_root=root,
