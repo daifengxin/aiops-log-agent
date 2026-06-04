@@ -3,6 +3,7 @@ from __future__ import annotations
 import numpy as np
 
 _MIN_HISTORY = 3
+_MIN_STD = 10.0
 
 
 def z_scores(values: list[float]) -> list[float]:
@@ -24,11 +25,7 @@ def z_scores(values: list[float]) -> list[float]:
             scores.append(0.0)
             continue
 
-        std = float(np.std(history))
-        if std == 0.0:
-            # warm-up 后历史完全平坦时，正向偏移是明确尖峰，直接给无穷大分数。
-            scores.append(float("inf"))
-            continue
-
+        # 使用标准差下限，避免低方差场景产生 inf，同时保留 z-like 阈值语义。
+        std = max(float(np.std(history)), _MIN_STD)
         scores.append((float(current) - mean) / std)
     return scores

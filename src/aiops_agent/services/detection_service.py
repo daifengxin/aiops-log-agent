@@ -51,13 +51,30 @@ class DetectionService:
                 for latency, expected in zip(latencies, baseline, strict=True)
             ]
             scores = z_scores(residuals)
+            active_period = False
 
             for window, score, expected in zip(ordered, scores, baseline, strict=True):
-                # 延迟异常只关心高于基线的尖峰，恢复/下降窗口不应触发报警。
-                if window.latency_p95 <= expected or score < self.config.z_threshold:
+                above_baseline = window.latency_p95 > expected
+                if not above_baseline:
+                    active_period = False
+                    continue
+
+                triggered = score >= self.config.z_threshold
+                if triggered:
+                    active_period = True
+                elif not active_period:
                     continue
 
                 anomaly_type = self._infer_anomaly_type(window)
+                reason = (
+                    f"latency_p95={window.latency_p95:.2f} exceeded "
+                    f"EWMA baseline={expected:.2f}"
+                )
+                if not triggered:
+                    reason = (
+                        f"latency_p95={window.latency_p95:.2f} remains above "
+                        f"EWMA baseline={expected:.2f} during active anomaly period"
+                    )
                 anomalies.append(
                     DetectedAnomaly(
                         service=window.service,
@@ -66,10 +83,7 @@ class DetectionService:
                         score=float(score),
                         metric_name="latency_p95",
                         anomaly_type=anomaly_type,
-                        reason=(
-                            f"latency_p95={window.latency_p95:.2f} exceeded "
-                            f"EWMA baseline={expected:.2f}"
-                        ),
+                        reason=reason,
                     )
                 )
 
@@ -87,10 +101,7 @@ class DetectionService:
         return self.detect(self._stream_buffer)
 
     def _infer_anomaly_type(self, window: WindowMetric) -> str:
-        if window.anomaly_types:
-            return window.anomaly_types[0]
-
-        # 无人工标签时，用高队列和高错误率做轻量解释；剩余高延迟视为延迟尖峰。
+        # 仅使用可观测指标推断类型，避免读取评估标签造成真值泄漏。
         if window.queue_depth_mean >= 100.0:
             return "queue_backlog"
         if window.error_rate >= 0.2:
