@@ -2,7 +2,7 @@ import json
 from datetime import datetime, timezone
 from pathlib import Path
 
-from aiops_agent.interfaces.cli import _jsonable, main
+from aiops_agent.interfaces.cli import _jsonable, build_parser, main
 from aiops_agent.models.schemas import DetectedAnomaly, SafetyResult
 
 
@@ -22,6 +22,26 @@ def test_evaluate_safety_command_prints_accuracy(capsys):
 
     assert exit_code == 0
     assert "accuracy" in output
+
+
+def test_stream_parser_accepts_documented_window_option():
+    parser = build_parser()
+    subparsers = next(
+        action
+        for action in parser._actions
+        if "stream" in (getattr(action, "choices", None) or {})
+    )
+    stream_parser = subparsers.choices["stream"]
+    option_strings = {
+        option
+        for action in stream_parser._actions
+        for option in action.option_strings
+    }
+
+    assert "--window" in option_strings
+
+    args = parser.parse_args(["stream", "--window", "10"])
+    assert args.window_seconds == 10
 
 
 def test_jsonable_preserves_command_buckets_and_serializes_runtime_types():
