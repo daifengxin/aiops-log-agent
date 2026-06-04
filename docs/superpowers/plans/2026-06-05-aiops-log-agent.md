@@ -12,8 +12,9 @@
 
 ## File Structure Map
 
-- `pyproject.toml`: package metadata, pytest config, console entry point.
-- `requirements.txt`: runtime and test dependencies for quick setup.
+- `pyproject.toml`: package metadata, uv dependency source, pytest config.
+- `uv.lock`: uv-generated dependency lockfile.
+- `requirements.txt`: final exported dependency deliverable generated from `uv.lock`.
 - `.gitignore`: excludes `.env`, generated data, reports, vector stores, caches.
 - `.env.example`: documents `GEMINI_API_KEY` and `GEMINI_MODEL`.
 - `README.md`: setup, commands, architecture, evaluation instructions.
@@ -50,7 +51,7 @@
 
 **Files:**
 - Create: `pyproject.toml`
-- Create: `requirements.txt`
+- Create: `uv.lock`
 - Create: `.gitignore`
 - Create: `.env.example`
 - Create: `src/aiops_agent/__init__.py`
@@ -123,7 +124,7 @@ def test_settings_ensure_dirs_creates_expected_directories(tmp_path, monkeypatch
 
 - [ ] **Step 2: Run the test and verify it fails**
 
-Run: `python -m pytest tests/test_config.py -v`
+Run: `uv run pytest tests/test_config.py -v`
 
 Expected: FAIL with `ModuleNotFoundError: No module named 'aiops_agent'`.
 
@@ -141,7 +142,23 @@ name = "aiops-log-agent"
 version = "0.1.0"
 description = "Evaluation-first AI ops log anomaly detection agent"
 requires-python = ">=3.11"
-dependencies = ["python-dotenv>=1.0.1"]
+dependencies = [
+    "chromadb>=0.5.23",
+    "fastapi>=0.115.0",
+    "google-genai>=1.0.0",
+    "langgraph>=0.2.60",
+    "matplotlib>=3.8.0",
+    "numpy>=1.26.0",
+    "pandas>=2.2.0",
+    "pydantic>=2.8.0",
+    "python-dotenv>=1.0.1",
+    "sentence-transformers>=3.0.0",
+    "tabulate>=0.9.0",
+    "uvicorn>=0.30.0",
+]
+
+[dependency-groups]
+dev = ["pytest>=8.3.0"]
 
 [tool.setuptools.packages.find]
 where = ["src"]
@@ -152,23 +169,8 @@ testpaths = ["tests"]
 addopts = "-q"
 ```
 
-Create `requirements.txt`:
-
-```text
-chromadb>=0.5.23
-fastapi>=0.115.0
-google-genai>=1.0.0
-langgraph>=0.2.60
-matplotlib>=3.8.0
-numpy>=1.26.0
-pandas>=2.2.0
-pydantic>=2.8.0
-python-dotenv>=1.0.1
-pytest>=8.3.0
-sentence-transformers>=3.0.0
-tabulate>=0.9.0
-uvicorn>=0.30.0
-```
+After creating `pyproject.toml`, run `uv lock` so `uv.lock` is generated and committed.
+If a hand-written `requirements.txt` already exists from earlier scaffold work, remove it in Task 1; Task 10 recreates it via `uv export`.
 
 Create `.gitignore`:
 
@@ -258,14 +260,14 @@ def _env_value(key: str, dotenv_config: dict[str, str | None]) -> str | None:
 
 - [ ] **Step 5: Run the config test**
 
-Run: `python -m pytest tests/test_config.py -v`
+Run: `uv run pytest tests/test_config.py -v`
 
 Expected: PASS.
 
 - [ ] **Step 6: Commit**
 
 ```bash
-git add pyproject.toml requirements.txt .gitignore .env.example src/aiops_agent/__init__.py src/aiops_agent/config.py tests/test_config.py
+git add pyproject.toml uv.lock .gitignore .env.example src/aiops_agent/__init__.py src/aiops_agent/config.py tests/test_config.py requirements.txt
 git commit -m "chore(config): scaffold project config"
 ```
 
@@ -312,7 +314,7 @@ def test_write_jsonl_round_trips_records(tmp_path):
 
 - [ ] **Step 2: Run tests and verify they fail**
 
-Run: `python -m pytest tests/test_data_generator.py -v`
+Run: `uv run pytest tests/test_data_generator.py -v`
 
 Expected: FAIL with import errors for `aiops_agent.data.generator`.
 
@@ -526,7 +528,7 @@ def _dependency_for(service: str) -> str:
 
 - [ ] **Step 5: Run generator tests**
 
-Run: `python -m pytest tests/test_data_generator.py -v`
+Run: `uv run pytest tests/test_data_generator.py -v`
 
 Expected: PASS.
 
@@ -592,7 +594,7 @@ def test_detection_service_finds_known_anomalies():
 
 - [ ] **Step 2: Run tests and verify they fail**
 
-Run: `python -m pytest tests/test_detection.py -v`
+Run: `uv run pytest tests/test_detection.py -v`
 
 Expected: FAIL with missing detection modules.
 
@@ -814,7 +816,7 @@ def _infer_anomaly_type(window: WindowMetric) -> str:
 
 - [ ] **Step 6: Run detection tests**
 
-Run: `python -m pytest tests/test_detection.py -v`
+Run: `uv run pytest tests/test_detection.py -v`
 
 Expected: PASS.
 
@@ -871,7 +873,7 @@ def test_window_eval_reports_target_types():
 
 - [ ] **Step 2: Run tests and verify they fail**
 
-Run: `python -m pytest tests/test_anomaly_eval.py -v`
+Run: `uv run pytest tests/test_anomaly_eval.py -v`
 
 Expected: FAIL with missing evaluation modules.
 
@@ -984,7 +986,7 @@ def evaluate_windows_by_type(
 
 - [ ] **Step 5: Run anomaly evaluation tests**
 
-Run: `python -m pytest tests/test_anomaly_eval.py -v`
+Run: `uv run pytest tests/test_anomaly_eval.py -v`
 
 Expected: PASS.
 
@@ -1051,7 +1053,7 @@ def test_alert_suppression_blocks_same_root_cause_for_60_seconds():
 
 - [ ] **Step 2: Run tests and verify they fail**
 
-Run: `python -m pytest tests/test_safety_alerting.py -v`
+Run: `uv run pytest tests/test_safety_alerting.py -v`
 
 Expected: FAIL with missing services.
 
@@ -1191,7 +1193,7 @@ def evaluate_safety_cases(service: CommandSafetyService, cases: list[dict[str, s
 
 - [ ] **Step 6: Run safety and alert tests**
 
-Run: `python -m pytest tests/test_safety_alerting.py -v`
+Run: `uv run pytest tests/test_safety_alerting.py -v`
 
 Expected: PASS.
 
@@ -1250,7 +1252,7 @@ def test_rag_eval_returns_recall_for_two_strategies():
 
 - [ ] **Step 2: Run tests and verify they fail**
 
-Run: `python -m pytest tests/test_rag.py -v`
+Run: `uv run pytest tests/test_rag.py -v`
 
 Expected: FAIL with missing RAG modules.
 
@@ -1576,7 +1578,7 @@ def evaluate_chunking_strategies(docs: list[dict[str, str]], queries: list[dict[
 
 - [ ] **Step 7: Run RAG tests**
 
-Run: `python -m pytest tests/test_rag.py -v`
+Run: `uv run pytest tests/test_rag.py -v`
 
 Expected: PASS.
 
@@ -1635,7 +1637,7 @@ def test_graph_runs_full_diagnosis_and_blocks_danger():
 
 - [ ] **Step 2: Run graph test and verify it fails**
 
-Run: `python -m pytest tests/test_graph.py -v`
+Run: `uv run pytest tests/test_graph.py -v`
 
 Expected: FAIL with missing graph modules.
 
@@ -1849,7 +1851,7 @@ def build_diagnosis_graph(llm_service: GeminiLLMService | None = None):
 
 - [ ] **Step 6: Run graph tests**
 
-Run: `python -m pytest tests/test_graph.py -v`
+Run: `uv run pytest tests/test_graph.py -v`
 
 Expected: PASS.
 
@@ -1898,7 +1900,7 @@ def test_evaluate_safety_command_prints_accuracy(capsys):
 
 - [ ] **Step 2: Run tests and verify they fail**
 
-Run: `python -m pytest tests/test_cli_smoke.py -v`
+Run: `uv run pytest tests/test_cli_smoke.py -v`
 
 Expected: FAIL with missing interfaces.
 
@@ -2084,7 +2086,7 @@ def run_stream(path: Path, window_seconds: int, emit_interval: float) -> None:
 
 - [ ] **Step 5: Run CLI tests**
 
-Run: `python -m pytest tests/test_cli_smoke.py -v`
+Run: `uv run pytest tests/test_cli_smoke.py -v`
 
 Expected: PASS.
 
@@ -2126,7 +2128,7 @@ def test_write_full_report_creates_markdown(tmp_path):
 
 - [ ] **Step 2: Run test and verify it fails**
 
-Run: `python -m pytest tests/test_report_writer.py -v`
+Run: `uv run pytest tests/test_report_writer.py -v`
 
 Expected: FAIL with missing `report_writer.py`.
 
@@ -2216,7 +2218,7 @@ def _write_figures(settings: Settings, grid: list[dict], window_rows: list[dict]
 
 - [ ] **Step 4: Run report writer test**
 
-Run: `python -m pytest tests/test_report_writer.py -v`
+Run: `uv run pytest tests/test_report_writer.py -v`
 
 Expected: PASS.
 
@@ -2247,10 +2249,7 @@ Create `README.md`:
 ## Setup
 
 ```bash
-python -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-pip install -e .
+uv sync
 cp .env.example .env
 ```
 
@@ -2260,12 +2259,12 @@ cp .env.example .env
 ## Commands
 
 ```bash
-python -m aiops_agent.interfaces.cli generate-data
-python -m aiops_agent.interfaces.cli build-rag
-python -m aiops_agent.interfaces.cli evaluate
-python -m aiops_agent.interfaces.cli diagnose data/logs/test_logs.jsonl --limit 80
-python -m aiops_agent.interfaces.cli stream data/logs/test_logs.jsonl --window 10 --emit-interval 1
-uvicorn aiops_agent.interfaces.api:app --reload
+uv run python -m aiops_agent.interfaces.cli generate-data
+uv run python -m aiops_agent.interfaces.cli build-rag
+uv run python -m aiops_agent.interfaces.cli evaluate
+uv run python -m aiops_agent.interfaces.cli diagnose data/logs/test_logs.jsonl --limit 80
+uv run python -m aiops_agent.interfaces.cli stream data/logs/test_logs.jsonl --window 10 --emit-interval 1
+uv run uvicorn aiops_agent.interfaces.api:app --reload
 ```
 
 ## Architecture
@@ -2275,6 +2274,10 @@ LangGraph 负责编排：检测 -> RAG -> Gemini -> 命令安全分级 -> 告警
 ## Evaluation
 
 `reports/evaluation.md` 包含异常检测参数敏感性、窗口粒度对比、RAG Recall@5、命令安全分级准确率、告警抑制和 10 倍日志量扩容分析。
+
+## requirements.txt
+
+依赖以 `pyproject.toml` 和 `uv.lock` 为准；`requirements.txt` 由 `uv export` 生成，仅作为交付物。
 ```
 
 - [ ] **Step 2: Write local `.env` without committing it**
@@ -2282,7 +2285,7 @@ LangGraph 负责编排：检测 -> RAG -> Gemini -> 命令安全分级 -> 告警
 Run this command from the project root. It prompts without echoing the key:
 
 ```bash
-python - <<'PY'
+uv run python - <<'PY'
 from getpass import getpass
 from pathlib import Path
 
@@ -2295,7 +2298,7 @@ Expected: `.env` exists and `git status --short` does not show `.env`.
 
 - [ ] **Step 3: Run full tests**
 
-Run: `python -m pytest -v`
+Run: `uv run pytest -v`
 
 Expected: PASS for all tests.
 
@@ -2304,10 +2307,10 @@ Expected: PASS for all tests.
 Run:
 
 ```bash
-python -m aiops_agent.interfaces.cli generate-data
-python -m aiops_agent.interfaces.cli build-rag
-python -m aiops_agent.interfaces.cli evaluate
-python -m aiops_agent.interfaces.cli evaluate-safety
+uv run python -m aiops_agent.interfaces.cli generate-data
+uv run python -m aiops_agent.interfaces.cli build-rag
+uv run python -m aiops_agent.interfaces.cli evaluate
+uv run python -m aiops_agent.interfaces.cli evaluate-safety
 ```
 
 Expected:
@@ -2321,7 +2324,7 @@ Expected:
 Run:
 
 ```bash
-python -m aiops_agent.interfaces.cli diagnose data/logs/test_logs.jsonl --limit 120
+uv run python -m aiops_agent.interfaces.cli diagnose data/logs/test_logs.jsonl --limit 120
 ```
 
 Expected:
@@ -2336,7 +2339,7 @@ Expected:
 Run:
 
 ```bash
-python -m aiops_agent.interfaces.cli stream data/logs/test_logs.jsonl --window 10 --emit-interval 0.1
+uv run python -m aiops_agent.interfaces.cli stream data/logs/test_logs.jsonl --window 10 --emit-interval 0.1
 ```
 
 Expected:
@@ -2345,11 +2348,25 @@ Expected:
 - Prints `alert_decision`.
 - Exits with Ctrl-C during manual smoke run.
 
-- [ ] **Step 7: Commit docs**
+- [ ] **Step 7: Export requirements.txt from uv lock**
+
+Run:
 
 ```bash
-git add README.md .env.example
-git commit -m "docs(readme): add usage and evaluation guide"
+uv export --format requirements.txt --no-hashes --no-emit-project --output-file requirements.txt
+```
+
+Expected:
+
+- `requirements.txt` exists.
+- The file is generated from `uv.lock`, not hand-written.
+- It contains runtime dependencies such as `langgraph`, `google-genai`, and `fastapi`.
+
+- [ ] **Step 8: Commit docs and exported requirements**
+
+```bash
+git add README.md .env.example requirements.txt
+git commit -m "docs(readme): add usage and exported requirements"
 ```
 
 ## Self-Review Checklist
