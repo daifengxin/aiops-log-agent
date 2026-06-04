@@ -19,16 +19,16 @@ class CommandSafetyService:
 
     def __init__(self) -> None:
         self._danger_rules = [
-            _rule(r"\brm\s+-[^\s;|&]*r[^\s;|&]*f\b", "DANGER", "包含 rm -rf 删除操作。"),
+            _rule(r"\brm\s+(?=[^;&|$]*-[^\s;&|$]*r)(?=[^;&|$]*-[^\s;&|$]*f)", "DANGER", "包含 rm 递归强制删除操作。"),
             _rule(r"\bdrop\s+table\b", "DANGER", "包含 DROP TABLE 破坏性数据库操作。"),
             _rule(r"\bkubectl\s+delete\b", "DANGER", "包含 kubectl delete 删除集群资源。"),
             _rule(r"\bkubectl\s+apply\s+-f\b", "DANGER", "包含 kubectl apply -f 变更集群资源。"),
             _rule(r"\bchmod\s+777\b", "DANGER", "包含 chmod 777 高风险权限变更。"),
             _rule(r"\bdd\s+if=", "DANGER", "包含 dd if= 块设备写入风险命令。"),
             _rule(r":\s*\(\s*\)\s*\{\s*:\s*\|\s*:\s*&\s*\}\s*;\s*:", "DANGER", "包含 fork bomb。"),
-            _rule(r";\s*(?:sudo\s+)?rm\b", "DANGER", "包含分号注入 rm 命令。"),
-            _rule(r";\s*(?:sudo\s+)?dd\b", "DANGER", "包含分号注入 dd 命令。"),
-            _rule(r";\s*kubectl\s+delete\b", "DANGER", "包含分号注入 kubectl delete。"),
+            _rule(r"(?:;|&&|\|\|?|\$\()\s*(?:sudo\s+)?rm\b", "DANGER", "包含 shell 注入 rm 命令。"),
+            _rule(r"(?:;|&&|\|\|?|\$\()\s*(?:sudo\s+)?dd\b", "DANGER", "包含 shell 注入 dd 命令。"),
+            _rule(r"(?:;|&&|\|\|?|\$\()\s*kubectl\s+delete\b", "DANGER", "包含 shell 注入 kubectl delete。"),
         ]
         self._caution_rules = [
             _rule(r"\bkubectl\s+rollout\s+restart\b", "CAUTION", "包含服务重启操作。"),
@@ -49,7 +49,7 @@ class CommandSafetyService:
     def classify(self, command: str) -> SafetyResult:
         normalized = command.strip()
 
-        # 规则顺序有安全含义：危险操作必须先匹配，避免读命令拼接破坏性命令后被误判安全。
+        # 规则顺序有安全含义：危险操作和 shell 注入必须先匹配，避免读命令拼接破坏性命令后被误判安全。
         for rules in (self._danger_rules, self._caution_rules, self._safe_rules):
             for rule in rules:
                 if rule.pattern.search(normalized):
