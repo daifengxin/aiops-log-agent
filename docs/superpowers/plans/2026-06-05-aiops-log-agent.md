@@ -641,24 +641,31 @@ from __future__ import annotations
 
 import numpy as np
 
+_MIN_HISTORY = 3
+
 
 def z_scores(values: list[float]) -> list[float]:
-    """基于历史值计算绝对 z-score，用于突出相对近期基线的尖峰。"""
+    """基于历史值计算正向 z-score，只突出相对近期基线的上升尖峰。"""
 
-    if len(values) < 2:
-        return [0.0 for _ in values]
-
-    scores = [0.0]
-    for index in range(1, len(values)):
-        history = np.array(values[:index], dtype=float)
-        std = float(np.std(history))
-        mean = float(np.mean(history))
-        if std == 0.0:
-            # 历史完全平坦时没有可用方差；非零偏移直接用绝对偏移量标记尖峰。
-            scores.append(abs(float(values[index]) - mean))
+    scores: list[float] = []
+    for index, current in enumerate(values):
+        if index < _MIN_HISTORY:
+            scores.append(0.0)
             continue
 
-        scores.append(abs((float(values[index]) - mean) / std))
+        history = np.array(values[:index], dtype=float)
+        mean = float(np.mean(history))
+        if float(current) <= mean:
+            scores.append(0.0)
+            continue
+
+        std = float(np.std(history))
+        if std == 0.0:
+            # warm-up 后历史完全平坦时，正向偏移是明确尖峰，直接给无穷大分数。
+            scores.append(float("inf"))
+            continue
+
+        scores.append((float(current) - mean) / std)
     return scores
 ```
 
@@ -740,23 +747,10 @@ class LogService:
                     continue
 
                 row = json.loads(line)
-                records.append(
-                    LogRecord(
-                        timestamp=datetime.fromisoformat(row["timestamp"]),
-                        service=row["service"],
-                        latency_ms=float(row["latency_ms"]),
-                        error_code=row["error_code"],
-                        request_id=row["request_id"],
-                        endpoint=row["endpoint"],
-                        status_code=int(row["status_code"]),
-                        cpu_pct=float(row["cpu_pct"]),
-                        memory_mb=float(row["memory_mb"]),
-                        queue_depth=int(row["queue_depth"]),
-                        dependency=row["dependency"],
-                        anomaly_type=row["anomaly_type"],
-                        is_anomaly=_parse_bool(row["is_anomaly"]),
-                    )
-                )
+                payload = dict(row)
+                payload["timestamp"] = datetime.fromisoformat(row["timestamp"])
+                payload["is_anomaly"] = _parse_bool(row["is_anomaly"])
+                records.append(LogRecord.model_validate(payload))
         return records
 
 
@@ -879,6 +873,8 @@ git commit -m "feat(detection): add statistical detection service"
 ```
 
 ## Task 4: Evaluation Metrics And Anomaly Parameter Grid
+
+**Evaluation scope clarification:** Task 4 keeps window-level Precision / Recall / F1 / false-positive-rate as the primary design requirement. Event/onset diagnostics may be added only as supplementary analysis if detector behavior suggests it; they should not replace the window-level metric contract in this task.
 
 **Files:**
 - Create: `src/aiops_agent/evaluation/__init__.py`

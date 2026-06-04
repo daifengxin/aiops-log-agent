@@ -2,22 +2,29 @@ from __future__ import annotations
 
 import numpy as np
 
+_MIN_HISTORY = 3
+
 
 def z_scores(values: list[float]) -> list[float]:
-    """基于历史值计算绝对 z-score，用于突出相对近期基线的尖峰。"""
+    """基于历史值计算正向 z-score，只突出相对近期基线的上升尖峰。"""
 
-    if len(values) < 2:
-        return [0.0 for _ in values]
-
-    scores = [0.0]
-    for index in range(1, len(values)):
-        history = np.array(values[:index], dtype=float)
-        std = float(np.std(history))
-        mean = float(np.mean(history))
-        if std == 0.0:
-            # 历史完全平坦时没有可用方差；非零偏移直接用绝对偏移量标记尖峰。
-            scores.append(abs(float(values[index]) - mean))
+    scores: list[float] = []
+    for index, current in enumerate(values):
+        if index < _MIN_HISTORY:
+            scores.append(0.0)
             continue
 
-        scores.append(abs((float(values[index]) - mean) / std))
+        history = np.array(values[:index], dtype=float)
+        mean = float(np.mean(history))
+        if float(current) <= mean:
+            scores.append(0.0)
+            continue
+
+        std = float(np.std(history))
+        if std == 0.0:
+            # warm-up 后历史完全平坦时，正向偏移是明确尖峰，直接给无穷大分数。
+            scores.append(float("inf"))
+            continue
+
+        scores.append((float(current) - mean) / std)
     return scores

@@ -1,7 +1,9 @@
 import json
+import math
 from datetime import datetime, timezone
 
 import pytest
+from pydantic import ValidationError
 
 from aiops_agent.data.generator import generate_logs
 from aiops_agent.detection.ewma import ewma
@@ -66,10 +68,17 @@ def test_z_scores_flags_spike():
 def test_z_scores_handles_short_and_zero_variance_series():
     assert z_scores([]) == []
     assert z_scores([5.0]) == [0.0]
+    assert z_scores([0.0, 100.0]) == [0.0, 0.0]
     assert z_scores([0.0, 0.0, 0.0]) == [0.0, 0.0, 0.0]
 
     scores = z_scores([0.0, 0.0, 0.0, 100.0])
-    assert scores[-1] > 2.0
+    assert math.isinf(scores[-1])
+
+
+def test_z_scores_only_scores_positive_spikes_after_warmup():
+    assert z_scores([10.0, 10.0, 10.0, 5.0])[-1] == 0.0
+    assert z_scores([10.0, 20.0, 30.0, 20.0])[-1] == 0.0
+    assert z_scores([10.0, 10.0, 10.0, 10.0])[-1] == 0.0
 
 
 def test_aggregate_windows_preserves_anomaly_labels():
@@ -177,6 +186,66 @@ def test_detection_service_does_not_alert_on_latency_drop_recovery():
     assert all("exceeded EWMA baseline" not in item.reason for item in anomalies)
 
 
+def test_detection_service_alerts_on_positive_spike_after_stable_history():
+    from aiops_agent.models.schemas import WindowMetric
+
+    base_time = datetime(2026, 6, 5, 9, 0, tzinfo=timezone.utc)
+    windows = [
+        WindowMetric(
+            service="api-gateway",
+            window_seconds=10,
+            bucket_start=base_time.replace(second=offset),
+            latency_mean=latency,
+            latency_p95=latency,
+            error_rate=0.0,
+            queue_depth_mean=10.0,
+            is_anomaly=False,
+            anomaly_types=(),
+        )
+        for offset, latency in [(0, 100.0), (10, 100.0), (20, 100.0), (30, 220.0)]
+    ]
+
+    anomalies = DetectionService(
+        DetectionConfig(alpha=0.2, z_threshold=2.0, window_seconds=10)
+    ).detect_from_windows(windows)
+
+    assert len(anomalies) == 1
+    assert anomalies[0].bucket_start == base_time.replace(second=30)
+    assert anomalies[0].score >= 2.0
+
+
+def test_detection_service_does_not_alert_when_positive_residual_declines():
+    from aiops_agent.models.schemas import WindowMetric
+
+    base_time = datetime(2026, 6, 5, 9, 0, tzinfo=timezone.utc)
+    windows = [
+        WindowMetric(
+            service="api-gateway",
+            window_seconds=10,
+            bucket_start=base_time.replace(second=offset),
+            latency_mean=latency,
+            latency_p95=latency,
+            error_rate=0.0,
+            queue_depth_mean=10.0,
+            is_anomaly=False,
+            anomaly_types=(),
+        )
+        for offset, latency in [
+            (0, 100.0),
+            (10, 200.0),
+            (20, 200.0),
+            (30, 200.0),
+            (40, 180.0),
+        ]
+    ]
+
+    anomalies = DetectionService(
+        DetectionConfig(alpha=0.2, z_threshold=2.0, window_seconds=10)
+    ).detect_from_windows(windows)
+
+    assert anomalies == []
+
+
 def test_detection_config_validates_thresholds():
     with pytest.raises(ValueError):
         DetectionConfig(alpha=0.0)
@@ -222,7 +291,33 @@ def test_log_service_read_jsonl_limit_and_false_string(tmp_path):
     assert records[1].is_anomaly is False
 
 
-@pytest.mark.parametrize("invalid_value", ["0", "yes", 1])
+@pytest.mark.parametrize(
+    ("raw_value", "expected"),
+    [
+        ("true", True),
+        (" TRUE ", True),
+        ("False", False),
+        (" false ", False),
+    ],
+)
+def test_log_service_read_jsonl_parses_string_bool_values(
+    tmp_path,
+    raw_value,
+    expected,
+):
+    record = _record(timestamp=datetime(2026, 6, 5, 9, 0, tzinfo=timezone.utc))
+    path = tmp_path / "logs.jsonl"
+    path.write_text(
+        json.dumps(record.to_json_dict() | {"is_anomaly": raw_value}),
+        encoding="utf-8",
+    )
+
+    records = LogService().read_jsonl(path)
+
+    assert records[0].is_anomaly is expected
+
+
+@pytest.mark.parametrize("invalid_value", ["0", "yes", 1, None, ""])
 def test_log_service_read_jsonl_rejects_invalid_bool_values(tmp_path, invalid_value):
     record = _record(timestamp=datetime(2026, 6, 5, 9, 0, tzinfo=timezone.utc))
     path = tmp_path / "logs.jsonl"
@@ -232,4 +327,16 @@ def test_log_service_read_jsonl_rejects_invalid_bool_values(tmp_path, invalid_va
     )
 
     with pytest.raises(ValueError):
+        LogService().read_jsonl(path)
+
+
+def test_log_service_read_jsonl_rejects_unknown_fields(tmp_path):
+    record = _record(timestamp=datetime(2026, 6, 5, 9, 0, tzinfo=timezone.utc))
+    path = tmp_path / "logs.jsonl"
+    path.write_text(
+        json.dumps(record.to_json_dict() | {"unexpected": "value"}),
+        encoding="utf-8",
+    )
+
+    with pytest.raises((ValidationError, ValueError)):
         LogService().read_jsonl(path)
