@@ -52,5 +52,9 @@ class DiagnosisService:
         for key in ("likely_root_causes", "evidence", "recommended_commands"):
             if not isinstance(report[key], list):
                 raise ValueError(f"Gemini report field {key} must be a list")
+        if not all(isinstance(command, str) for command in report["recommended_commands"]):
+            raise ValueError(
+                "Gemini report field recommended_commands must contain only strings"
+            )
         if not isinstance(report["confidence"], int | float):
             raise ValueError("Gemini report field confidence must be numeric")

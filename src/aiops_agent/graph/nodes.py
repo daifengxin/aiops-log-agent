@@ -21,20 +21,25 @@ class DiagnosisGraphNodes:
         rag_service: RAGService | None = None,
     ) -> None:
         self.detection_service = DetectionService()
-        self.rag_service = rag_service or RAGService()
+        self._rag_service = rag_service
         self.diagnosis_service = DiagnosisService(llm_service or GeminiLLMService())
         self.safety_service = CommandSafetyService()
         self.alert_service = AlertService()
+
+    def _get_rag_service(self) -> RAGService:
+        if self._rag_service is None:
+            self._rag_service = RAGService()
+        return self._rag_service
 
     def detect(self, state: AIOpsDiagnosisState) -> dict[str, Any]:
         return {"detected_anomalies": self.detection_service.detect(state["records"])}
 
     def build_rag_query(self, state: AIOpsDiagnosisState) -> dict[str, Any]:
-        query = self.rag_service.build_query(state.get("detected_anomalies", []))
+        query = self._get_rag_service().build_query(state.get("detected_anomalies", []))
         return {"rag_query": query}
 
     def retrieve_k8s_docs(self, state: AIOpsDiagnosisState) -> dict[str, Any]:
-        chunks = self.rag_service.retrieve(state.get("rag_query", ""), top_k=5)
+        chunks = self._get_rag_service().retrieve(state.get("rag_query", ""), top_k=5)
         return {"retrieved_chunks": chunks}
 
     def gemini(self, state: AIOpsDiagnosisState) -> dict[str, Any]:
@@ -46,11 +51,16 @@ class DiagnosisGraphNodes:
 
     def classify_commands(self, state: AIOpsDiagnosisState) -> dict[str, Any]:
         commands = state.get("llm_report", {}).get("recommended_commands", [])
-        results = self.safety_service.classify_many([str(command) for command in commands])
-        # SAFE 可直接执行，CAUTION 留在安全侧供人工复核；只有 DANGER 进入阻断列表。
-        safe = [item for item in results if item.level in {"SAFE", "CAUTION"}]
+        results = self.safety_service.classify_many(commands)
+        # CAUTION 需要人工复核，避免下游把它当作可自动执行的 SAFE 命令。
+        safe = [item for item in results if item.level == "SAFE"]
+        review = [item for item in results if item.level == "CAUTION"]
         blocked = [item for item in results if item.level == "DANGER"]
-        return {"safe_commands": safe, "blocked_commands": blocked}
+        return {
+            "safe_commands": safe,
+            "review_commands": review,
+            "blocked_commands": blocked,
+        }
 
     def suppress_alerts(self, state: AIOpsDiagnosisState) -> dict[str, Any]:
         anomalies = state.get("detected_anomalies", [])
