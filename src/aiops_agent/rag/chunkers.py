@@ -17,8 +17,15 @@ def fixed_char_chunks(
     for doc_index, doc in enumerate(docs):
         text = doc["text"].strip()
         step = chunk_size - overlap
-        for chunk_index, start in enumerate(range(0, len(text), step)):
-            piece = text[start : start + chunk_size].strip()
+        emitted_until = 0
+        chunk_index = 0
+        for start in range(0, len(text), step):
+            end = min(start + chunk_size, len(text))
+            # 最后一段如果完全落在上一段 overlap 内，就不会增加新内容，直接跳过。
+            if end <= emitted_until:
+                continue
+
+            piece = text[start:end].strip()
             if not piece:
                 continue
             chunks.append(
@@ -29,6 +36,8 @@ def fixed_char_chunks(
                     source=doc["source"],
                 )
             )
+            emitted_until = end
+            chunk_index += 1
     return chunks
 
 
