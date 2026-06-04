@@ -18,23 +18,10 @@ class LogService:
                     continue
 
                 row = json.loads(line)
-                records.append(
-                    LogRecord(
-                        timestamp=datetime.fromisoformat(row["timestamp"]),
-                        service=str(row["service"]),
-                        latency_ms=float(row["latency_ms"]),
-                        error_code=str(row["error_code"]),
-                        request_id=str(row["request_id"]),
-                        endpoint=str(row["endpoint"]),
-                        status_code=int(row["status_code"]),
-                        cpu_pct=float(row["cpu_pct"]),
-                        memory_mb=float(row["memory_mb"]),
-                        queue_depth=int(row["queue_depth"]),
-                        dependency=str(row["dependency"]),
-                        anomaly_type=str(row["anomaly_type"]),
-                        is_anomaly=_parse_bool(row["is_anomaly"]),
-                    )
-                )
+                payload = dict(row)
+                payload["timestamp"] = datetime.fromisoformat(row["timestamp"])
+                payload["is_anomaly"] = _parse_bool(row["is_anomaly"])
+                records.append(LogRecord.model_validate(payload))
         return records
 
 
