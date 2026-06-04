@@ -56,7 +56,13 @@ def build_parser() -> argparse.ArgumentParser:
         type=Path,
         default=Path("data/logs/test_logs.jsonl"),
     )
-    stream.add_argument("--window-seconds", type=int, default=10)
+    stream.add_argument(
+        "--window",
+        "--window-seconds",
+        dest="window_seconds",
+        type=int,
+        default=10,
+    )
     stream.add_argument("--emit-interval", type=float, default=1.0)
     stream.set_defaults(handler=_handle_stream)
 
