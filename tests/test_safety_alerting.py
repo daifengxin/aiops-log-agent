@@ -34,6 +34,20 @@ def test_command_safety_detects_shell_injection_variants(command):
 @pytest.mark.parametrize(
     "command",
     [
+        "kubectl get pods `rm /tmp/file`",
+        "kubectl get pods `dd of=/tmp/out`",
+        "kubectl get pods `kubectl delete pod bad`",
+    ],
+)
+def test_command_safety_detects_backtick_shell_substitution(command):
+    service = CommandSafetyService()
+
+    assert service.classify(command).level == "DANGER"
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
         "rm -fr /var/lib/data",
         "rm -r -f /var/lib/data",
     ],

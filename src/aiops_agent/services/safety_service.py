@@ -26,9 +26,9 @@ class CommandSafetyService:
             _rule(r"\bchmod\s+777\b", "DANGER", "包含 chmod 777 高风险权限变更。"),
             _rule(r"\bdd\s+if=", "DANGER", "包含 dd if= 块设备写入风险命令。"),
             _rule(r":\s*\(\s*\)\s*\{\s*:\s*\|\s*:\s*&\s*\}\s*;\s*:", "DANGER", "包含 fork bomb。"),
-            _rule(r"(?:;|&&|\|\|?|\$\()\s*(?:sudo\s+)?rm\b", "DANGER", "包含 shell 注入 rm 命令。"),
-            _rule(r"(?:;|&&|\|\|?|\$\()\s*(?:sudo\s+)?dd\b", "DANGER", "包含 shell 注入 dd 命令。"),
-            _rule(r"(?:;|&&|\|\|?|\$\()\s*kubectl\s+delete\b", "DANGER", "包含 shell 注入 kubectl delete。"),
+            _rule(r"(?:;|&&|\|\|?|`|\$\()\s*(?:sudo\s+)?rm\b", "DANGER", "包含 shell 注入 rm 命令。"),
+            _rule(r"(?:;|&&|\|\|?|`|\$\()\s*(?:sudo\s+)?dd\b", "DANGER", "包含 shell 注入 dd 命令。"),
+            _rule(r"(?:;|&&|\|\|?|`|\$\()\s*kubectl\s+delete\b", "DANGER", "包含 shell 注入 kubectl delete。"),
         ]
         self._caution_rules = [
             _rule(r"\bkubectl\s+rollout\s+restart\b", "CAUTION", "包含服务重启操作。"),
