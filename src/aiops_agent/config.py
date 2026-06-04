@@ -4,7 +4,7 @@ import os
 from dataclasses import dataclass
 from pathlib import Path
 
-from dotenv import load_dotenv
+from dotenv import dotenv_values
 
 
 @dataclass(frozen=True)
@@ -23,9 +23,18 @@ class Settings:
 
     @classmethod
     def from_env(cls, project_root: Path | None = None) -> "Settings":
+        """从环境变量和项目根目录的 .env 文件创建配置。"""
+
         root = project_root or Path.cwd()
+        # 只读取指定根目录的 .env 内容，不写入 os.environ，避免不同项目根目录互相污染。
+        env_file = dotenv_values(root / ".env")
+        # 真实环境变量优先，其次使用 .env，最后落到默认模型。
+        gemini_api_key = os.environ.get("GEMINI_API_KEY", env_file.get("GEMINI_API_KEY"))
+        gemini_model = os.environ.get(
+            "GEMINI_MODEL",
+            env_file.get("GEMINI_MODEL") or "gemini-3.5-flash",
+        )
         # 以项目根目录为基准派生所有默认路径，避免调用方依赖硬编码目录。
-        load_dotenv(root / ".env")
         data_dir = root / "data"
         return cls(
             project_root=root,
@@ -35,10 +44,12 @@ class Settings:
             eval_dir=data_dir / "eval",
             reports_dir=root / "reports",
             figures_dir=root / "reports" / "figures",
-            gemini_api_key=os.getenv("GEMINI_API_KEY"),
-            gemini_model=os.getenv("GEMINI_MODEL", "gemini-3.5-flash"),
+            gemini_api_key=gemini_api_key,
+            gemini_model=gemini_model,
         )
 
     def ensure_dirs(self) -> None:
+        """创建运行时需要的日志、RAG、评估和图表目录。"""
+
         for path in [self.logs_dir, self.rag_dir, self.eval_dir, self.figures_dir]:
             path.mkdir(parents=True, exist_ok=True)
