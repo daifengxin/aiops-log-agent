@@ -1542,15 +1542,9 @@ Create `src/aiops_agent/rag/chunkers.py`:
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass
 
 
-@dataclass(frozen=True)
-class TextChunk:
-    chunk_id: str
-    title: str
-    text: str
-    source: str
+from aiops_agent.models.schemas import TextChunk
 
 
 def fixed_char_chunks(docs: list[dict[str, str]], chunk_size: int = 800, overlap: int = 120) -> list[TextChunk]:
@@ -1609,11 +1603,7 @@ from collections import Counter
 from math import sqrt
 from pathlib import Path
 
-import chromadb
-from sentence_transformers import SentenceTransformer
-
-from aiops_agent.models.schemas import RetrievedChunk
-from aiops_agent.rag.chunkers import TextChunk
+from aiops_agent.models.schemas import RetrievedChunk, TextChunk
 
 
 class ChromaVectorStore:
@@ -1622,6 +1612,11 @@ class ChromaVectorStore:
     def __init__(self, persist_dir: Path, collection_name: str = "k8s_docs"):
         self.persist_dir = persist_dir
         self.persist_dir.mkdir(parents=True, exist_ok=True)
+
+        # 重依赖延迟到 ChromaVectorStore 实例化阶段，单元测试导入 SimpleVectorStore 不会下载模型。
+        import chromadb
+        from sentence_transformers import SentenceTransformer
+
         self.model = SentenceTransformer("all-MiniLM-L6-v2")
         self.client = chromadb.PersistentClient(path=str(self.persist_dir))
         self.collection = self.client.get_or_create_collection(collection_name)

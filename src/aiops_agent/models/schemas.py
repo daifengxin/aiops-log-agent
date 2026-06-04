@@ -61,6 +61,15 @@ class DetectedAnomaly(FrozenModel):
     reason: str
 
 
+class TextChunk(FrozenModel):
+    """RAG 切分后的文档片段。"""
+
+    chunk_id: str
+    title: str
+    text: str
+    source: str
+
+
 class RetrievedChunk(FrozenModel):
     """RAG 检索返回的文档片段。"""
 
