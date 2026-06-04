@@ -81,6 +81,17 @@ def test_z_scores_only_scores_positive_spikes_after_warmup():
     assert z_scores([10.0, 10.0, 10.0, 10.0])[-1] == 0.0
 
 
+@pytest.mark.parametrize(
+    "values",
+    [
+        [-1.0, -1.0, -1.0, 0.0],
+        [-10.0, -10.0, -10.0, -5.0],
+    ],
+)
+def test_z_scores_ignore_nonpositive_residuals(values):
+    assert z_scores(values)[-1] == 0.0
+
+
 def test_aggregate_windows_preserves_anomaly_labels():
     records = generate_logs(seed=5, per_service=80)
     windows = aggregate_windows(records, window_seconds=10)

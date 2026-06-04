@@ -14,6 +14,10 @@ def z_scores(values: list[float]) -> list[float]:
             scores.append(0.0)
             continue
 
+        if float(current) <= 0.0:
+            scores.append(0.0)
+            continue
+
         history = np.array(values[:index], dtype=float)
         mean = float(np.mean(history))
         if float(current) <= mean:
