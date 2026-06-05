@@ -16,6 +16,15 @@ def test_k8s_docs_have_operational_topics():
     assert "DNS Troubleshooting" in titles
 
 
+def test_k8s_docs_manifest_reaches_required_official_page_volume():
+    docs = load_curated_k8s_docs()
+    estimated_pages = sum(int(doc["estimated_pages"]) for doc in docs)
+
+    assert estimated_pages >= 50
+    assert len(docs) >= 10
+    assert all(doc["source"].startswith("https://kubernetes.io/docs/") for doc in docs)
+
+
 def test_semantic_chunker_preserves_code_blocks():
     docs = [
         {

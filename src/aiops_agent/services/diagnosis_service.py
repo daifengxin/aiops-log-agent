@@ -42,6 +42,7 @@ class DiagnosisService:
         return (
             "You are an AIOps diagnosis assistant. Return only JSON with keys "
             "anomaly_type, likely_root_causes, evidence, recommended_commands, confidence. "
+            "likely_root_causes, evidence, and recommended_commands must be JSON arrays of strings. "
             "confidence must be a JSON number from 0 to 1, not a string or percent.\n"
             f"anomalies: {json.dumps(anomaly_rows, ensure_ascii=False)}\n"
             f"retrieved_chunks: {json.dumps(chunk_rows, ensure_ascii=False)}"
@@ -55,6 +56,10 @@ class DiagnosisService:
                 report["confidence"] = float(value.removesuffix("%").strip()) / 100
                 return
             report["confidence"] = float(value)
+        for key in ("likely_root_causes", "evidence"):
+            # Gemini 偶尔会把单条原因/证据返回为字符串；这里安全地归一化为单元素数组。
+            if isinstance(report.get(key), str):
+                report[key] = [report[key]]
 
     def _validate_report(self, report: dict[str, Any]) -> None:
         missing = REQUIRED_REPORT_KEYS - report.keys()

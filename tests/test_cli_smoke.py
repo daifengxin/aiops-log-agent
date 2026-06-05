@@ -4,6 +4,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from aiops_agent.interfaces.cli import _jsonable, build_parser, main
+from aiops_agent.data.generator import generate_logs, write_jsonl
 from aiops_agent.models.schemas import DetectedAnomaly, SafetyResult
 
 
@@ -118,10 +119,8 @@ def test_stream_file_builds_graph_with_window_seconds(monkeypatch, tmp_path, cap
     from aiops_agent.interfaces import stream
 
     captured: dict[str, int] = {}
-
-    class FakeLogService:
-        def read_jsonl(self, path):
-            return [object() for _ in range(20)]
+    log_path = tmp_path / "logs.jsonl"
+    write_jsonl(generate_logs(seed=11, per_service=4)[:20], log_path)
 
     class FakeGraph:
         def invoke(self, state):
@@ -131,12 +130,11 @@ def test_stream_file_builds_graph_with_window_seconds(monkeypatch, tmp_path, cap
         captured["window_seconds"] = detection_service.config.window_seconds
         return FakeGraph()
 
-    monkeypatch.setattr(stream, "LogService", FakeLogService)
     monkeypatch.setattr(stream, "build_diagnosis_graph", fake_build_graph)
 
     asyncio.run(
         stream.stream_file(
-            tmp_path / "logs.jsonl",
+            log_path,
             emit_interval=0,
             batch_size=20,
             window_seconds=60,
@@ -145,3 +143,33 @@ def test_stream_file_builds_graph_with_window_seconds(monkeypatch, tmp_path, cap
 
     assert captured["window_seconds"] == 60
     assert json.loads(capsys.readouterr().out)["records_seen"] == 20
+
+
+def test_stream_file_reads_jsonl_incrementally_without_full_file_read(monkeypatch, tmp_path, capsys):
+    from aiops_agent.interfaces import stream
+    from aiops_agent.services.log_service import LogService
+
+    log_path = tmp_path / "logs.jsonl"
+    write_jsonl(generate_logs(seed=12, per_service=2)[:6], log_path)
+
+    class FakeGraph:
+        def invoke(self, state):
+            return {"alert_decision": {"suppressed": False}}
+
+    def fail_read_jsonl(self, path, limit=None):
+        raise AssertionError("stream_file should not read the whole file at startup")
+
+    monkeypatch.setattr(LogService, "read_jsonl", fail_read_jsonl)
+    monkeypatch.setattr(stream, "build_diagnosis_graph", lambda **kwargs: FakeGraph())
+
+    asyncio.run(
+        stream.stream_file(
+            log_path,
+            emit_interval=0,
+            batch_size=3,
+            window_seconds=10,
+        )
+    )
+
+    events = [json.loads(line) for line in capsys.readouterr().out.splitlines()]
+    assert [event["records_seen"] for event in events] == [3, 6]

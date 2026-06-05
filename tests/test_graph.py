@@ -57,6 +57,20 @@ class FakePercentConfidenceLLMService(GeminiLLMService):
         }
 
 
+class FakeStringEvidenceLLMService(GeminiLLMService):
+    def __init__(self) -> None:
+        pass
+
+    def generate_json(self, prompt: str) -> dict:
+        return {
+            "anomaly_type": "latency_spike",
+            "likely_root_causes": "pod_cpu_saturation",
+            "evidence": "api-gateway latency p95 exceeded EWMA baseline",
+            "recommended_commands": ["kubectl get pods -A"],
+            "confidence": 0.82,
+        }
+
+
 class FakeRAGService:
     def build_query(self, anomalies):
         assert anomalies
@@ -115,6 +129,15 @@ def test_diagnosis_service_normalizes_percent_confidence():
     report = service.diagnose([], [])
 
     assert report["confidence"] == 0.82
+
+
+def test_diagnosis_service_normalizes_single_string_list_fields():
+    service = DiagnosisService(FakeStringEvidenceLLMService())
+
+    report = service.diagnose([], [])
+
+    assert report["likely_root_causes"] == ["pod_cpu_saturation"]
+    assert report["evidence"] == ["api-gateway latency p95 exceeded EWMA baseline"]
 
 
 def test_alert_suppression_state_persists_within_compiled_graph(monkeypatch):
