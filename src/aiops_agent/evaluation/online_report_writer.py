@@ -8,6 +8,7 @@ from typing import Any, Protocol
 from aiops_agent.config import Settings
 from aiops_agent.data.generator import generate_logs, write_jsonl
 from aiops_agent.evaluation.anomaly_eval import (
+    evaluate_type_classification,
     evaluate_parameter_grid,
     evaluate_windows_by_type,
 )
@@ -102,12 +103,19 @@ def _evaluate_online_metrics(records: list[LogRecord]) -> dict[str, Any]:
         threshold=2.5,
         windows=[1, 10, 60],
     )
+    type_rows = evaluate_type_classification(
+        records,
+        alpha=0.2,
+        threshold=2.5,
+        window_seconds=10,
+    )
     rag_rows = evaluate_chunking_strategies(docs, queries)
     safety_rows = evaluate_safety_cases(CommandSafetyService(), safety_test_cases())
     return {
         "sample_counts": _sample_counts(records),
         "anomaly_grid": anomaly_grid,
         "window_rows": window_rows,
+        "type_rows": type_rows,
         "rag_rows": rag_rows,
         "safety_rows": safety_rows,
         "optimization_comparison": _optimization_comparison(anomaly_grid),
@@ -124,9 +132,10 @@ def _build_appendix_prompt(metrics: dict[str, Any]) -> str:
         "1) 3x3 异常检测参数敏感性 Precision/Recall/F1；"
         "2) 1s/10s/60s 在 latency_spike 和 transaction_conflict 上的 F1 对比，"
         "必须明确写出哪种粒度更适合哪类异常以及原因；"
-        "3) 两种 RAG chunking 在 10 条 query 上的 Recall@5，以及哪类 query 更受影响；"
-        "4) 命令安全分级准确率和误分类案例；"
-        "5) 至少一个优化前 vs 优化后对比。"
+        "3) 严格 anomaly_type 级别 Precision/Recall/F1；"
+        "4) 两种 RAG chunking 在 10 条 query 上的 Recall@5，以及哪类 query 更受影响；"
+        "5) 命令安全分级准确率和误分类案例；"
+        "6) 至少一个优化前 vs 优化后对比。"
         "所有数字只能来自下面 JSON，不允许编造。\n"
         f"metrics_json:\n{payload}"
     )
@@ -202,6 +211,7 @@ def _render_report(
             "## 抽样数据集\n\n" + _markdown_table([counts]),
             "## 异常检测参数敏感性\n\n" + _markdown_table(metrics["anomaly_grid"]),
             "## 多粒度窗口对比\n\n" + _markdown_table(metrics["window_rows"]),
+            "## 异常类型识别准确性\n\n" + _markdown_table(metrics["type_rows"]),
             "## RAG 检索质量\n\n" + _markdown_table(metrics["rag_rows"]),
             "## 命令安全分级准确性\n\n" + _markdown_table(metrics["safety_rows"]),
             (

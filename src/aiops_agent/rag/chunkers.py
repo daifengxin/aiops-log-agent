@@ -1,8 +1,17 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 import re
 
 from aiops_agent.models.schemas import TextChunk
+
+
+@dataclass(frozen=True)
+class _ParagraphBlock:
+    text: str
+    paragraph_id: str
+    start: int
+    end: int
 
 
 def fixed_char_chunks(
@@ -16,6 +25,7 @@ def fixed_char_chunks(
     chunks: list[TextChunk] = []
     for doc_index, doc in enumerate(docs):
         text = doc["text"].strip()
+        blocks = _paragraph_blocks(doc, doc_index)
         step = chunk_size - overlap
         emitted_until = 0
         chunk_index = 0
@@ -34,6 +44,7 @@ def fixed_char_chunks(
                     title=doc["title"],
                     text=piece,
                     source=doc["source"],
+                    paragraph_ids=_overlapping_paragraph_ids(blocks, start, end),
                 )
             )
             emitted_until = end
@@ -51,21 +62,43 @@ def semantic_chunks(
     _validate_chunk_args(target_size, overlap)
     chunks: list[TextChunk] = []
     for doc_index, doc in enumerate(docs):
-        blocks = _split_preserving_code_blocks(doc["text"])
+        blocks = _paragraph_blocks(doc, doc_index)
         current = ""
+        current_ids: tuple[str, ...] = ()
         chunk_index = 0
 
         for block in blocks:
-            candidate = f"{current}\n\n{block}".strip() if current else block
+            candidate = f"{current}\n\n{block.text}".strip() if current else block.text
+            candidate_ids = current_ids + (block.paragraph_id,)
             if current and len(candidate) > target_size:
-                chunks.append(_build_chunk(doc, doc_index, chunk_index, current, "semantic"))
+                chunks.append(
+                    _build_chunk(
+                        doc,
+                        doc_index,
+                        chunk_index,
+                        current,
+                        "semantic",
+                        current_ids,
+                    )
+                )
                 chunk_index += 1
-                current = _join_overlap(current, block, overlap)
+                current = _join_overlap(current, block.text, overlap)
+                current_ids = (block.paragraph_id,)
                 continue
             current = candidate
+            current_ids = candidate_ids
 
         if current.strip():
-            chunks.append(_build_chunk(doc, doc_index, chunk_index, current, "semantic"))
+            chunks.append(
+                _build_chunk(
+                    doc,
+                    doc_index,
+                    chunk_index,
+                    current,
+                    "semantic",
+                    current_ids,
+                )
+            )
 
     return chunks
 
@@ -76,13 +109,39 @@ def _build_chunk(
     chunk_index: int,
     text: str,
     strategy: str,
+    paragraph_ids: tuple[str, ...],
 ) -> TextChunk:
     return TextChunk(
         chunk_id=f"{strategy}-{doc_index}-{chunk_index}",
         title=doc["title"],
         text=text.strip(),
         source=doc["source"],
+        paragraph_ids=paragraph_ids,
     )
+
+
+def _paragraph_blocks(doc: dict[str, str], doc_index: int) -> list[_ParagraphBlock]:
+    text = doc["text"].strip()
+    raw_blocks = _split_preserving_code_blocks(text)
+    blocks: list[_ParagraphBlock] = []
+    cursor = 0
+
+    for block_index, block in enumerate(raw_blocks):
+        start = text.find(block, cursor)
+        if start < 0:
+            start = cursor
+        end = start + len(block)
+        blocks.append(
+            _ParagraphBlock(
+                text=block,
+                paragraph_id=f"{doc['title']}#p{block_index}",
+                start=start,
+                end=end,
+            )
+        )
+        cursor = end
+
+    return blocks
 
 
 def _split_preserving_code_blocks(text: str) -> list[str]:
@@ -112,6 +171,18 @@ def _join_overlap(previous: str, block: str, overlap: int) -> str:
         return block
 
     return f"{previous[-overlap:].strip()}\n\n{block}".strip()
+
+
+def _overlapping_paragraph_ids(
+    blocks: list[_ParagraphBlock],
+    start: int,
+    end: int,
+) -> tuple[str, ...]:
+    return tuple(
+        block.paragraph_id
+        for block in blocks
+        if block.start < end and block.end > start
+    )
 
 
 def _validate_chunk_args(chunk_size: int, overlap: int) -> None:

@@ -65,9 +65,11 @@ def test_write_online_gemini_report_calls_llm_and_writes_evidence(tmp_path, monk
     }
     assert len(artifact["anomaly_grid"]) == 9
     assert len(artifact["window_rows"]) == 6
+    assert len(artifact["type_rows"]) == 3
     assert len(artifact["rag_rows"]) == 2
     assert len(artifact["safety_rows"]) >= 20
     assert "kubectl get pods \\| dd of=/tmp/out" in report
     assert "anomaly_grid" in fake_llm.prompt
+    assert "type_rows" in fake_llm.prompt
     assert "哪种粒度更适合哪类异常" in fake_llm.prompt
     assert "optimization_comparison" in fake_llm.prompt

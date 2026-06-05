@@ -43,11 +43,13 @@ LangGraph 编排流程：检测 -> RAG -> Gemini -> 命令安全分级 -> 告警
 
 ## Evaluation
 
-`reports/evaluation.md` 由 `evaluate --all` 生成，包含异常检测参数敏感性、多粒度窗口对比、RAG Chunking Recall@5、命令安全准确率、告警抑制量化和 10 倍日志量扩容分析。配套图表位于 `reports/figures/`，包括 F1 heatmap 和安全混淆矩阵。
+`reports/evaluation.md` 由 `evaluate --all` 生成，包含异常检测参数敏感性、多粒度窗口对比、严格 anomaly_type 级别指标、RAG Chunking 段落级 Recall@5、命令安全准确率、告警抑制量化和 10 倍日志量扩容分析。配套图表位于 `reports/figures/`，包括 F1 heatmap 和安全混淆矩阵。
 
 `reports/gemini_evaluation.md` 由 `evaluate-online` 生成：先抽样 200 条正常日志和 40 条异常日志计算量化指标，再把指标 JSON 交给 Gemini 生成在线评估附录。证据文件位于 `data/eval/online_gemini_evaluation.json`。
 
-`data/eval/` 会导出可提交附件：已标注 JSONL 日志、10 条 RAG Query、异常检测网格评测、窗口 F1、RAG Recall@5、命令安全评测和告警抑制降噪结果。
+`data/rag/k8s_official_docs.json` 缓存 Kubernetes website 仓库中的官方 Markdown 正文，离线评估优先使用该长文档语料；raw 路径缺失的页面回退到本仓库内置官方 URL 摘录。
+
+`data/eval/` 会导出可提交附件：已标注 JSONL 日志、10 条 RAG Query、异常检测网格评测、窗口 F1、类型级 F1、RAG 段落级 Recall@5、命令安全评测和告警抑制降噪结果。
 
 离线评测不调用 Gemini，也不伪造 LLM 诊断质量分数。真实诊断报告的结构由 `DiagnosisService` 校验，命令建议会继续进入 SAFE / CAUTION / DANGER 分级；语义质量和 grounding 需要配置 `GEMINI_API_KEY` 后通过 `diagnose` 或 `/diagnose` 做真实验收。
 

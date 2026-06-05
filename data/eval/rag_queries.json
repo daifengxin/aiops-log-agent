@@ -1,63 +1,62 @@
 [
   {
     "query": "how to inspect pod events for latency spike",
-    "expected_titles": [
-      "Debug Pods",
-      "Events"
+    "expected_paragraph_ids": [
+      "Events#p3"
     ]
   },
   {
     "query": "cpu throttling causes high latency in pods",
-    "expected_titles": [
-      "Resource Management"
+    "expected_paragraph_ids": [
+      "Resource Management#p6"
     ]
   },
   {
     "query": "readiness probe failures remove pods from service",
-    "expected_titles": [
-      "Probes"
+    "expected_paragraph_ids": [
+      "Probes#p40"
     ]
   },
   {
     "query": "service DNS lookup timeouts in Kubernetes",
-    "expected_titles": [
-      "DNS Troubleshooting"
+    "expected_paragraph_ids": [
+      "Services#p185"
     ]
   },
   {
     "query": "check deployment rollout status",
-    "expected_titles": [
-      "Deployments"
+    "expected_paragraph_ids": [
+      "Deployments#p240"
     ]
   },
   {
     "query": "kubectl logs for application timeout",
-    "expected_titles": [
-      "Debug Pods"
+    "expected_paragraph_ids": [
+      "kubectl Logs#p0"
     ]
   },
   {
     "query": "cluster events sorted by timestamp",
-    "expected_titles": [
-      "Events"
+    "expected_paragraph_ids": [
+      "Events#p1"
     ]
   },
   {
     "query": "memory limits and OOM diagnostic",
-    "expected_titles": [
-      "Resource Management"
+    "expected_paragraph_ids": [
+      "Resource Management#p7"
     ]
   },
   {
     "query": "CoreDNS pods logs troubleshooting",
-    "expected_titles": [
-      "DNS Troubleshooting"
+    "expected_paragraph_ids": [
+      "DNS Troubleshooting#p56"
     ]
   },
   {
     "query": "liveness probe restarts unhealthy container",
-    "expected_titles": [
-      "Probes"
+    "expected_paragraph_ids": [
+      "Probes#p20"
     ]
   }
 ]

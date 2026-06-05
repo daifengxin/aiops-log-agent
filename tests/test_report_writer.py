@@ -13,6 +13,7 @@ def test_write_full_report_creates_evaluation_markdown(tmp_path, monkeypatch):
     assert report_path.is_file()
     report = report_path.read_text(encoding="utf-8")
     assert "异常检测参数敏感性" in report
+    assert "异常类型识别准确性" in report
     assert "RAG Chunking Recall@5" in report
     assert "命令安全分级" in report
     assert "60 秒内相同 service + anomaly_type + root_cause" in report
@@ -41,6 +42,7 @@ def test_write_full_report_creates_required_figures_and_eval_artifacts(tmp_path,
         "rag_queries.json",
         "anomaly_grid.json",
         "window_f1.json",
+        "type_f1.json",
         "rag_recall.json",
         "safety_eval.json",
         "alert_suppression.json",

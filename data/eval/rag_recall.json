@@ -1,14 +1,18 @@
 [
   {
     "strategy": "fixed",
-    "chunk_count": 14,
-    "avg_chunk_chars": 566.36,
-    "recall_at_5": 1.0
+    "chunk_count": 482,
+    "avg_chunk_chars": 789.39,
+    "avg_paragraphs_per_chunk": 5.0,
+    "ground_truth_level": "paragraph",
+    "recall_at_5": 0.9
   },
   {
     "strategy": "semantic",
-    "chunk_count": 14,
-    "avg_chunk_chars": 566.36,
+    "chunk_count": 483,
+    "avg_chunk_chars": 776.05,
+    "avg_paragraphs_per_chunk": 3.41,
+    "ground_truth_level": "paragraph",
     "recall_at_5": 1.0
   }
 ]
