@@ -2,24 +2,24 @@
 
 ## Kubernetes 官方语料清单
 
-本项目选取 Kubernetes 官方文档中的 14 个运维排障相关页面，估算页数 66 页，满足任务书要求的官方技术文档体量 ≥ 50 页。离线 RAG 语料正文总字符数为 7929，用于保证评测可复现且不依赖网络。
+本项目选取 Kubernetes 官方文档中的 14 个运维排障相关页面，估算页数 66 页，满足任务书要求的官方技术文档体量 ≥ 50 页。离线 RAG 语料正文总字符数为 324784，用于保证评测可复现且不依赖网络。
 
 | 标题                        |   估算页数 |   字符数 | 来源                                                                                                    |
 |:--------------------------|-------:|------:|:------------------------------------------------------------------------------------------------------|
-| Debug Pods                |      4 |   657 | https://kubernetes.io/docs/tasks/debug/debug-application/debug-pods/                                  |
-| Resource Management       |      6 |   623 | https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/                        |
-| Probes                    |      5 |   583 | https://kubernetes.io/docs/tasks/configure-pod-container/configure-liveness-readiness-startup-probes/ |
-| DNS Troubleshooting       |      4 |   651 | https://kubernetes.io/docs/tasks/administer-cluster/dns-debugging-resolution/                         |
-| Events                    |      2 |   543 | https://kubernetes.io/docs/reference/kubectl/generated/kubectl_events/                                |
-| Deployments               |      7 |   673 | https://kubernetes.io/docs/concepts/workloads/controllers/deployment/                                 |
-| Services                  |      6 |   625 | https://kubernetes.io/docs/concepts/services-networking/service/                                      |
-| Troubleshoot Applications |      6 |   578 | https://kubernetes.io/docs/tasks/debug/debug-application/                                             |
-| Nodes                     |      5 |   470 | https://kubernetes.io/docs/concepts/architecture/nodes/                                               |
-| Jobs                      |      4 |   499 | https://kubernetes.io/docs/concepts/workloads/controllers/job/                                        |
-| ConfigMaps                |      4 |   518 | https://kubernetes.io/docs/concepts/configuration/configmap/                                          |
-| Network Policies          |      5 |   500 | https://kubernetes.io/docs/concepts/services-networking/network-policies/                             |
-| Persistent Volumes        |      5 |   517 | https://kubernetes.io/docs/concepts/storage/persistent-volumes/                                       |
-| kubectl Logs              |      3 |   492 | https://kubernetes.io/docs/reference/kubectl/generated/kubectl_logs/                                  |
+| Debug Pods                |      4 |  7992 | https://kubernetes.io/docs/tasks/debug/debug-application/debug-pods/                                  |
+| Resource Management       |      6 | 32020 | https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/                        |
+| Probes                    |      5 | 12246 | https://kubernetes.io/docs/tasks/configure-pod-container/configure-liveness-readiness-startup-probes/ |
+| DNS Troubleshooting       |      4 |  9879 | https://kubernetes.io/docs/tasks/administer-cluster/dns-debugging-resolution/                         |
+| Events                    |      2 |   865 | https://kubernetes.io/docs/reference/kubectl/generated/kubectl_events/                                |
+| Deployments               |      7 | 57539 | https://kubernetes.io/docs/concepts/workloads/controllers/deployment/                                 |
+| Services                  |      6 | 42490 | https://kubernetes.io/docs/concepts/services-networking/service/                                      |
+| Troubleshoot Applications |      6 |   285 | https://kubernetes.io/docs/tasks/debug/debug-application/                                             |
+| Nodes                     |      5 | 13347 | https://kubernetes.io/docs/concepts/architecture/nodes/                                               |
+| Jobs                      |      4 | 59935 | https://kubernetes.io/docs/concepts/workloads/controllers/job/                                        |
+| ConfigMaps                |      4 | 11818 | https://kubernetes.io/docs/concepts/configuration/configmap/                                          |
+| Network Policies          |      5 | 21394 | https://kubernetes.io/docs/concepts/services-networking/network-policies/                             |
+| Persistent Volumes        |      5 | 54192 | https://kubernetes.io/docs/concepts/storage/persistent-volumes/                                       |
+| kubectl Logs              |      3 |   782 | https://kubernetes.io/docs/reference/kubectl/generated/kubectl_logs/                                  |
 
 ## 异常检测参数敏感性
 
@@ -58,18 +58,28 @@
 |               60 | latency_spike        |     0.2 |           2.5 |      0.2857 |   1      | 0.4444 |                0.1099 |
 |               60 | transaction_conflict |     0.2 |           2.5 |      0.5    |   0.875  | 0.6364 |                0.0805 |
 
+## 异常类型识别准确性
+
+窗口级 F1 只衡量是否发现异常；本节按 anomaly_type 严格评估，同一窗口检出但类型错误会被计为对应类型的漏报/误报。
+
+|   window_seconds | anomaly_type         |   alpha |   z_threshold |   precision |   recall |     f1 |   false_positive_rate |
+|-----------------:|:---------------------|--------:|--------------:|------------:|---------:|-------:|----------------------:|
+|               10 | latency_spike        |     0.2 |           2.5 |           1 |    1     | 1      |                     0 |
+|               10 | transaction_conflict |     0.2 |           2.5 |           1 |    0.625 | 0.7692 |                     0 |
+|               10 | queue_backlog        |     0.2 |           2.5 |           1 |    0.3   | 0.4615 |                     0 |
+
 ## RAG Chunking Recall@5
 
 使用离线 Kubernetes 语料和词法向量检索，比较固定字符切分与语义切分的Top-5 召回。
 
 ![rag recall](figures/rag_recall_at_5.png)
 
-| strategy   |   chunk_count |   avg_chunk_chars |   recall_at_5 |
-|:-----------|--------------:|------------------:|--------------:|
-| fixed      |            14 |            566.36 |             1 |
-| semantic   |            14 |            566.36 |             1 |
+| strategy   |   chunk_count |   avg_chunk_chars |   avg_paragraphs_per_chunk | ground_truth_level   |   recall_at_5 |
+|:-----------|--------------:|------------------:|---------------------------:|:---------------------|--------------:|
+| fixed      |           482 |            789.39 |                       5    | paragraph            |           0.9 |
+| semantic   |           483 |            776.05 |                       3.41 | paragraph            |           1   |
 
-当前最高 Recall@5 策略为 fixed，Recall@5=1.0。
+当前最高 Recall@5 策略为 semantic，Recall@5=1.0。
 
 ## 命令安全分级
 
@@ -117,9 +127,9 @@
 
 |   raw_alert_count |   suppressed_alert_count |   final_alert_count |   noise_reduction_rate |
 |------------------:|-------------------------:|--------------------:|-----------------------:|
-|                45 |                       34 |                  11 |                 0.7556 |
+|                45 |                       35 |                  10 |                 0.7778 |
 
-告警降噪率为 75.56%。
+告警降噪率为 77.78%。
 
 ## 10 倍日志量扩容
 

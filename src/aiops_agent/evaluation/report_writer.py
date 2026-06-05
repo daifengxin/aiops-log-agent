@@ -10,6 +10,7 @@ import pandas as pd
 from aiops_agent.config import Settings
 from aiops_agent.data.generator import generate_logs, write_jsonl
 from aiops_agent.evaluation.anomaly_eval import (
+    evaluate_type_classification,
     evaluate_parameter_grid,
     evaluate_windows_by_type,
 )
@@ -52,6 +53,12 @@ def write_full_report(settings: Settings) -> None:
         threshold=2.5,
         windows=[1, 10, 60],
     )
+    type_rows = evaluate_type_classification(
+        records,
+        alpha=0.2,
+        threshold=2.5,
+        window_seconds=10,
+    )
     rag_rows = evaluate_chunking_strategies(
         docs,
         queries,
@@ -75,6 +82,7 @@ def write_full_report(settings: Settings) -> None:
         queries=queries,
         anomaly_grid=anomaly_grid,
         window_rows=window_rows,
+        type_rows=type_rows,
         rag_rows=rag_rows,
         safety_rows=safety_rows,
         alert_stats=alert_stats,
@@ -83,6 +91,7 @@ def write_full_report(settings: Settings) -> None:
         docs=docs,
         anomaly_grid=anomaly_grid,
         window_rows=window_rows,
+        type_rows=type_rows,
         rag_rows=rag_rows,
         safety_rows=safety_rows,
         alert_stats=alert_stats,
@@ -95,6 +104,7 @@ def _render_report(
     docs: list[dict[str, Any]],
     anomaly_grid: list[dict[str, Any]],
     window_rows: list[dict[str, Any]],
+    type_rows: list[dict[str, Any]],
     rag_rows: list[dict[str, Any]],
     safety_rows: list[dict[str, Any]],
     alert_stats: dict[str, Any],
@@ -132,6 +142,12 @@ def _render_report(
             "使用 alpha=0.2、z_threshold=2.5，对 1/10/60 秒窗口按异常类型比较。\n\n"
             f"![window F1]({_relative_figure(figure_paths['window_f1'])})\n\n"
             + _markdown_table(window_rows)
+        ),
+        (
+            "## 异常类型识别准确性\n\n"
+            "窗口级 F1 只衡量是否发现异常；本节按 anomaly_type 严格评估，"
+            "同一窗口检出但类型错误会被计为对应类型的漏报/误报。\n\n"
+            + _markdown_table(type_rows)
         ),
         (
             "## RAG Chunking Recall@5\n\n"
@@ -320,6 +336,7 @@ def _write_eval_artifacts(
     queries: list[dict[str, object]],
     anomaly_grid: list[dict[str, Any]],
     window_rows: list[dict[str, Any]],
+    type_rows: list[dict[str, Any]],
     rag_rows: list[dict[str, Any]],
     safety_rows: list[dict[str, Any]],
     alert_stats: dict[str, Any],
@@ -329,6 +346,7 @@ def _write_eval_artifacts(
     _write_json(settings.eval_dir / "rag_queries.json", _json_ready(queries))
     _write_json(settings.eval_dir / "anomaly_grid.json", anomaly_grid)
     _write_json(settings.eval_dir / "window_f1.json", window_rows)
+    _write_json(settings.eval_dir / "type_f1.json", type_rows)
     _write_json(settings.eval_dir / "rag_recall.json", rag_rows)
     _write_json(settings.eval_dir / "safety_eval.json", safety_rows)
     _write_json(settings.eval_dir / "alert_suppression.json", alert_stats)

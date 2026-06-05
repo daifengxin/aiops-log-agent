@@ -9,6 +9,7 @@ from typing import Any
 from aiops_agent.models.schemas import RetrievedChunk, TextChunk
 
 CHROMA_COLLECTION_METADATA = {"hnsw:space": "cosine"}
+_PARAGRAPH_ID_SEPARATOR = "\x1f"
 
 
 class ChromaVectorStore:
@@ -51,7 +52,14 @@ class ChromaVectorStore:
         self.collection.add(
             ids=[chunk.chunk_id for chunk in chunks],
             documents=[chunk.text for chunk in chunks],
-            metadatas=[{"title": chunk.title, "source": chunk.source} for chunk in chunks],
+            metadatas=[
+                {
+                    "title": chunk.title,
+                    "source": chunk.source,
+                    "paragraph_ids": _pack_paragraph_ids(chunk.paragraph_ids),
+                }
+                for chunk in chunks
+            ],
             embeddings=embeddings,
         )
 
@@ -89,6 +97,7 @@ class SimpleVectorStore:
                 text=chunk.text,
                 source=chunk.source,
                 score=round(score, 4),
+                paragraph_ids=chunk.paragraph_ids,
             )
             for score, _, chunk in scored[:top_k]
         ]
@@ -117,9 +126,22 @@ def _chroma_result_to_chunks(result: dict[str, Any]) -> list[RetrievedChunk]:
                 text=str(text),
                 source=str(metadata["source"]),
                 score=round(score, 4),
+                paragraph_ids=_unpack_paragraph_ids(
+                    str(metadata.get("paragraph_ids", ""))
+                ),
             )
         )
     return rows
+
+
+def _pack_paragraph_ids(paragraph_ids: tuple[str, ...]) -> str:
+    return _PARAGRAPH_ID_SEPARATOR.join(paragraph_ids)
+
+
+def _unpack_paragraph_ids(value: str) -> tuple[str, ...]:
+    if not value:
+        return ()
+    return tuple(item for item in value.split(_PARAGRAPH_ID_SEPARATOR) if item)
 
 
 def _vectorize(text: str) -> Counter[str]:

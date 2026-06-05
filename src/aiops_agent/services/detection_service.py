@@ -112,6 +112,6 @@ class DetectionService:
         # 仅使用可观测指标推断类型，避免读取评估标签造成真值泄漏。
         if window.queue_depth_mean >= 100.0:
             return "queue_backlog"
-        if window.error_rate >= 0.2:
+        if window.conflict_rate >= 0.2:
             return "transaction_conflict"
         return "latency_spike"

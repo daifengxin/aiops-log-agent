@@ -44,6 +44,7 @@ class WindowMetric(FrozenModel):
     latency_mean: float
     latency_p95: float
     error_rate: float
+    conflict_rate: float = 0.0
     queue_depth_mean: float
     is_anomaly: StrictBool
     anomaly_types: tuple[str, ...]
@@ -68,6 +69,7 @@ class TextChunk(FrozenModel):
     title: str
     text: str
     source: str
+    paragraph_ids: tuple[str, ...] = ()
 
 
 class RetrievedChunk(FrozenModel):
@@ -78,6 +80,7 @@ class RetrievedChunk(FrozenModel):
     text: str
     source: str
     score: float
+    paragraph_ids: tuple[str, ...] = ()
 
 
 class SafetyResult(FrozenModel):

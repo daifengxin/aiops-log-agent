@@ -8,6 +8,7 @@ from aiops_agent.models.schemas import DetectedAnomaly, LogRecord, WindowMetric
 from aiops_agent.services.detection_service import DetectionConfig, DetectionService
 
 TARGET_ANOMALY_TYPES = ("latency_spike", "transaction_conflict")
+ALL_ANOMALY_TYPES = ("latency_spike", "transaction_conflict", "queue_backlog")
 WindowKey = tuple[str, int, datetime]
 
 
@@ -79,6 +80,46 @@ def evaluate_windows_by_type(
     return rows
 
 
+def evaluate_type_classification(
+    records: list[LogRecord],
+    alpha: float,
+    threshold: float,
+    window_seconds: int,
+) -> list[dict[str, float | int | str]]:
+    windows = aggregate_windows(records, window_seconds)
+    predicted_types = _detected_window_types(
+        windows=windows,
+        alpha=alpha,
+        threshold=threshold,
+        window_seconds=window_seconds,
+    )
+
+    rows: list[dict[str, float | int | str]] = []
+    for anomaly_type in ALL_ANOMALY_TYPES:
+        true_labels = [
+            anomaly_type in window.anomaly_types
+            for window in windows
+        ]
+        pred_labels = [
+            anomaly_type in predicted_types.get(_window_key(window), set())
+            for window in windows
+        ]
+        rows.append(
+            {
+                "window_seconds": window_seconds,
+                "anomaly_type": anomaly_type,
+                "alpha": alpha,
+                "z_threshold": threshold,
+                **classification_metrics(
+                    true_labels=true_labels,
+                    pred_labels=pred_labels,
+                ),
+            }
+        )
+
+    return rows
+
+
 def _detected_window_keys(
     windows: list[WindowMetric],
     alpha: float,
@@ -96,6 +137,28 @@ def _detected_window_keys(
 
     anomalies = DetectionService(config=config).detect_from_windows(windows)
     return {_detected_window_key(item) for item in anomalies}
+
+
+def _detected_window_types(
+    windows: list[WindowMetric],
+    alpha: float,
+    threshold: float,
+    window_seconds: int,
+) -> dict[WindowKey, set[str]]:
+    config = DetectionConfig(
+        alpha=alpha,
+        z_threshold=threshold,
+        window_seconds=window_seconds,
+    )
+    if not windows:
+        return {}
+
+    detected: dict[WindowKey, set[str]] = {}
+    for anomaly in DetectionService(config=config).detect_from_windows(windows):
+        detected.setdefault(_detected_window_key(anomaly), set()).add(
+            anomaly.anomaly_type
+        )
+    return detected
 
 
 def _metrics_for_windows(

@@ -33,6 +33,11 @@ def aggregate_windows(
             for item in bucket_records
             if item.status_code >= 400 or item.error_code != "NONE"
         ]
+        conflicts = [
+            item
+            for item in bucket_records
+            if item.status_code == 409 or item.error_code == "TX_CONFLICT"
+        ]
         tzinfo = bucket_records[0].timestamp.tzinfo
 
         # 保留窗口内任意异常标签，方便检测服务输出可解释的异常类型。
@@ -52,6 +57,7 @@ def aggregate_windows(
                 latency_mean=float(np.mean(latencies)),
                 latency_p95=float(np.percentile(latencies, 95)),
                 error_rate=len(errors) / len(bucket_records),
+                conflict_rate=len(conflicts) / len(bucket_records),
                 queue_depth_mean=float(np.mean(queue_depths)),
                 is_anomaly=is_anomaly,
                 anomaly_types=tuple(anomaly_types),

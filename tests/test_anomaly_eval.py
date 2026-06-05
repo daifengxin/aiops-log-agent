@@ -5,6 +5,7 @@ import pytest
 from aiops_agent.data.generator import generate_logs
 from aiops_agent.evaluation import anomaly_eval
 from aiops_agent.evaluation.anomaly_eval import (
+    evaluate_type_classification,
     evaluate_parameter_grid,
     evaluate_windows_by_type,
 )
@@ -295,6 +296,56 @@ def test_window_type_metrics_count_detected_window_despite_inferred_type_mismatc
     assert latency_row["precision"] == 1.0
     assert latency_row["recall"] == 1.0
     assert latency_row["f1"] == 1.0
+
+
+def test_type_classification_metrics_penalize_inferred_type_mismatch(monkeypatch):
+    bucket_start = datetime(2026, 6, 5, 9, 0, tzinfo=timezone.utc)
+    target_window = WindowMetric(
+        service="api-gateway",
+        window_seconds=10,
+        bucket_start=bucket_start,
+        latency_mean=400.0,
+        latency_p95=420.0,
+        error_rate=0.0,
+        queue_depth_mean=12.0,
+        is_anomaly=True,
+        anomaly_types=("latency_spike",),
+    )
+    detected_window = DetectedAnomaly(
+        service="api-gateway",
+        window_seconds=10,
+        bucket_start=bucket_start,
+        score=3.2,
+        metric_name="latency_p95",
+        anomaly_type="transaction_conflict",
+        reason="detected same window with different inferred type",
+    )
+
+    monkeypatch.setattr(
+        anomaly_eval,
+        "aggregate_windows",
+        lambda records, window_seconds: [target_window],
+    )
+    monkeypatch.setattr(
+        anomaly_eval.DetectionService,
+        "detect_from_windows",
+        lambda self, windows: [detected_window],
+    )
+
+    rows = evaluate_type_classification(
+        records=[],
+        alpha=0.2,
+        threshold=2.5,
+        window_seconds=10,
+    )
+    latency_row = next(row for row in rows if row["anomaly_type"] == "latency_spike")
+    conflict_row = next(
+        row for row in rows if row["anomaly_type"] == "transaction_conflict"
+    )
+
+    assert latency_row["recall"] == 0.0
+    assert latency_row["f1"] == 0.0
+    assert conflict_row["precision"] == 0.0
 
 
 def test_window_alignment_includes_window_seconds(monkeypatch):

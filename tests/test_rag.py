@@ -88,3 +88,25 @@ def test_rag_eval_returns_recall_for_two_strategies():
 
     assert {row["strategy"] for row in rows} == {"fixed", "semantic"}
     assert all("recall_at_5" in row for row in rows)
+
+
+def test_rag_eval_uses_paragraph_ground_truth():
+    docs = load_curated_k8s_docs()
+    queries = rag_test_queries()
+
+    assert all("expected_paragraph_ids" in query for query in queries)
+
+    rows = evaluate_chunking_strategies(docs, queries)
+
+    assert all("avg_paragraphs_per_chunk" in row for row in rows)
+    assert all(row["ground_truth_level"] == "paragraph" for row in rows)
+
+
+def test_curated_docs_produce_distinct_chunking_shapes():
+    docs = load_curated_k8s_docs()
+
+    fixed = fixed_char_chunks(docs)
+    semantic = semantic_chunks(docs)
+
+    assert len(fixed) != len(semantic)
+    assert all(chunk.paragraph_ids for chunk in fixed + semantic)
