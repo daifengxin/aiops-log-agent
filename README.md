@@ -22,13 +22,14 @@ GEMINI_MODEL=gemini-3.5-flash
 uv run python -m aiops_agent.interfaces.cli generate-data
 uv run python -m aiops_agent.interfaces.cli build-rag
 uv run python -m aiops_agent.interfaces.cli evaluate --all
+uv run python -m aiops_agent.interfaces.cli evaluate-online
 uv run python -m aiops_agent.interfaces.cli evaluate-safety
 uv run python -m aiops_agent.interfaces.cli diagnose data/logs/test_logs.jsonl --limit 80
 uv run python -m aiops_agent.interfaces.cli stream data/logs/test_logs.jsonl --window 10 --emit-interval 1
 uv run uvicorn aiops_agent.interfaces.api:app --reload
 ```
 
-`diagnose`、`stream` 和 `/diagnose` 会调用真实 Gemini，需要 `.env` 中存在 `GEMINI_API_KEY`。`build-rag` 使用离线 Kubernetes 官方文档语料清单，真实索引在诊断时按需懒加载。
+`diagnose`、`stream`、`/diagnose` 和 `evaluate-online` 会调用真实 Gemini，需要 `.env` 中存在 `GEMINI_API_KEY`。`build-rag` 使用离线 Kubernetes 官方文档语料清单，真实索引在诊断时按需懒加载。
 
 ## Architecture
 
@@ -43,6 +44,8 @@ LangGraph 编排流程：检测 -> RAG -> Gemini -> 命令安全分级 -> 告警
 ## Evaluation
 
 `reports/evaluation.md` 由 `evaluate --all` 生成，包含异常检测参数敏感性、多粒度窗口对比、RAG Chunking Recall@5、命令安全准确率、告警抑制量化和 10 倍日志量扩容分析。配套图表位于 `reports/figures/`，包括 F1 heatmap 和安全混淆矩阵。
+
+`reports/gemini_evaluation.md` 由 `evaluate-online` 生成：先抽样 200 条正常日志和 40 条异常日志计算量化指标，再把指标 JSON 交给 Gemini 生成在线评估附录。证据文件位于 `data/eval/online_gemini_evaluation.json`。
 
 `data/eval/` 会导出可提交附件：已标注 JSONL 日志、10 条 RAG Query、异常检测网格评测、窗口 F1、RAG Recall@5、命令安全评测和告警抑制降噪结果。
 

@@ -52,6 +52,12 @@ def test_evaluate_parser_accepts_all_flag_without_running_report():
     assert args.all is True
 
 
+def test_evaluate_online_parser_exists_without_running_gemini():
+    args = build_parser().parse_args(["evaluate-online"])
+
+    assert args.command == "evaluate-online"
+
+
 def test_jsonable_preserves_command_buckets_and_serializes_runtime_types():
     timestamp = datetime(2026, 6, 5, 9, 0, tzinfo=timezone.utc)
     result = {

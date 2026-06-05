@@ -51,6 +51,9 @@ def build_parser() -> argparse.ArgumentParser:
     )
     evaluate.set_defaults(handler=_handle_evaluate)
 
+    evaluate_online = subparsers.add_parser("evaluate-online")
+    evaluate_online.set_defaults(handler=_handle_evaluate_online)
+
     build_rag = subparsers.add_parser("build-rag")
     build_rag.set_defaults(handler=_handle_build_rag)
 
@@ -134,6 +137,15 @@ def _handle_evaluate(args: argparse.Namespace) -> None:
     settings = Settings.from_env()
     write_full_report(settings)
     print(settings.reports_dir / "evaluation.md")
+
+
+def _handle_evaluate_online(args: argparse.Namespace) -> None:
+    from aiops_agent.evaluation.online_report_writer import write_online_gemini_report
+
+    del args
+    settings = Settings.from_env()
+    write_online_gemini_report(settings)
+    print(settings.reports_dir / "gemini_evaluation.md")
 
 
 def _handle_build_rag(args: argparse.Namespace) -> None:
