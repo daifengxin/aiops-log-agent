@@ -1,0 +1,359 @@
+{
+  "sample_counts": {
+    "normal": 200,
+    "anomaly": 40,
+    "latency_spike": 20,
+    "transaction_conflict": 20
+  },
+  "anomaly_grid": [
+    {
+      "alpha": 0.1,
+      "z_threshold": 2.0,
+      "precision": 1.0,
+      "recall": 0.9583,
+      "f1": 0.9787,
+      "false_positive_rate": 0.0
+    },
+    {
+      "alpha": 0.1,
+      "z_threshold": 2.5,
+      "precision": 1.0,
+      "recall": 0.9583,
+      "f1": 0.9787,
+      "false_positive_rate": 0.0
+    },
+    {
+      "alpha": 0.1,
+      "z_threshold": 3.0,
+      "precision": 1.0,
+      "recall": 0.9583,
+      "f1": 0.9787,
+      "false_positive_rate": 0.0
+    },
+    {
+      "alpha": 0.2,
+      "z_threshold": 2.0,
+      "precision": 1.0,
+      "recall": 0.9583,
+      "f1": 0.9787,
+      "false_positive_rate": 0.0
+    },
+    {
+      "alpha": 0.2,
+      "z_threshold": 2.5,
+      "precision": 1.0,
+      "recall": 0.9583,
+      "f1": 0.9787,
+      "false_positive_rate": 0.0
+    },
+    {
+      "alpha": 0.2,
+      "z_threshold": 3.0,
+      "precision": 1.0,
+      "recall": 0.9583,
+      "f1": 0.9787,
+      "false_positive_rate": 0.0
+    },
+    {
+      "alpha": 0.3,
+      "z_threshold": 2.0,
+      "precision": 1.0,
+      "recall": 0.8333,
+      "f1": 0.9091,
+      "false_positive_rate": 0.0
+    },
+    {
+      "alpha": 0.3,
+      "z_threshold": 2.5,
+      "precision": 1.0,
+      "recall": 0.8333,
+      "f1": 0.9091,
+      "false_positive_rate": 0.0
+    },
+    {
+      "alpha": 0.3,
+      "z_threshold": 3.0,
+      "precision": 1.0,
+      "recall": 0.8333,
+      "f1": 0.9091,
+      "false_positive_rate": 0.0
+    }
+  ],
+  "window_rows": [
+    {
+      "window_seconds": 1,
+      "anomaly_type": "latency_spike",
+      "alpha": 0.2,
+      "z_threshold": 2.5,
+      "precision": 0.6,
+      "recall": 0.3,
+      "f1": 0.4,
+      "false_positive_rate": 0.0182
+    },
+    {
+      "window_seconds": 1,
+      "anomaly_type": "transaction_conflict",
+      "alpha": 0.2,
+      "z_threshold": 2.5,
+      "precision": 0.4,
+      "recall": 0.2,
+      "f1": 0.2667,
+      "false_positive_rate": 0.0273
+    },
+    {
+      "window_seconds": 10,
+      "anomaly_type": "latency_spike",
+      "alpha": 0.2,
+      "z_threshold": 2.5,
+      "precision": 0.5217,
+      "recall": 1.0,
+      "f1": 0.6857,
+      "false_positive_rate": 0.0982
+    },
+    {
+      "window_seconds": 10,
+      "anomaly_type": "transaction_conflict",
+      "alpha": 0.2,
+      "z_threshold": 2.5,
+      "precision": 0.4783,
+      "recall": 0.9167,
+      "f1": 0.6286,
+      "false_positive_rate": 0.1071
+    },
+    {
+      "window_seconds": 60,
+      "anomaly_type": "latency_spike",
+      "alpha": 0.2,
+      "z_threshold": 2.5,
+      "precision": 0.5714,
+      "recall": 1.0,
+      "f1": 0.7273,
+      "false_positive_rate": 0.1364
+    },
+    {
+      "window_seconds": 60,
+      "anomaly_type": "transaction_conflict",
+      "alpha": 0.2,
+      "z_threshold": 2.5,
+      "precision": 0.4286,
+      "recall": 0.75,
+      "f1": 0.5455,
+      "false_positive_rate": 0.1818
+    }
+  ],
+  "rag_rows": [
+    {
+      "strategy": "fixed",
+      "chunk_count": 14,
+      "avg_chunk_chars": 566.36,
+      "recall_at_5": 1.0
+    },
+    {
+      "strategy": "semantic",
+      "chunk_count": 14,
+      "avg_chunk_chars": 566.36,
+      "recall_at_5": 1.0
+    }
+  ],
+  "safety_rows": [
+    {
+      "command": "kubectl get pods -A",
+      "expected": "SAFE",
+      "predicted": "SAFE",
+      "reason": "只读取 Kubernetes 资源列表。"
+    },
+    {
+      "command": "kubectl describe pod api-0",
+      "expected": "SAFE",
+      "predicted": "SAFE",
+      "reason": "只读取 Kubernetes 资源详情。"
+    },
+    {
+      "command": "kubectl logs deployment/api",
+      "expected": "SAFE",
+      "predicted": "SAFE",
+      "reason": "只读取 Kubernetes 日志。"
+    },
+    {
+      "command": "kubectl top pods -n prod",
+      "expected": "SAFE",
+      "predicted": "SAFE",
+      "reason": "只读取 Kubernetes 资源用量。"
+    },
+    {
+      "command": "top",
+      "expected": "SAFE",
+      "predicted": "SAFE",
+      "reason": "只查看系统进程概览。"
+    },
+    {
+      "command": "ps aux",
+      "expected": "SAFE",
+      "predicted": "SAFE",
+      "reason": "只查看进程列表。"
+    },
+    {
+      "command": "netstat -tulpn",
+      "expected": "SAFE",
+      "predicted": "SAFE",
+      "reason": "只查看网络连接状态。"
+    },
+    {
+      "command": "curl -I https://example.com/health",
+      "expected": "SAFE",
+      "predicted": "SAFE",
+      "reason": "只读取 HTTP 响应头。"
+    },
+    {
+      "command": "kubectl rollout restart deployment api",
+      "expected": "CAUTION",
+      "predicted": "CAUTION",
+      "reason": "包含服务重启操作。"
+    },
+    {
+      "command": "kubectl scale deployment api --replicas=3",
+      "expected": "CAUTION",
+      "predicted": "CAUTION",
+      "reason": "包含副本数调整操作。"
+    },
+    {
+      "command": "systemctl restart nginx",
+      "expected": "CAUTION",
+      "predicted": "CAUTION",
+      "reason": "包含 systemctl restart 操作。"
+    },
+    {
+      "command": "kill 1234",
+      "expected": "CAUTION",
+      "predicted": "CAUTION",
+      "reason": "包含 kill 进程操作。"
+    },
+    {
+      "command": "helm upgrade api ./chart",
+      "expected": "CAUTION",
+      "predicted": "CAUTION",
+      "reason": "未匹配到已知安全读操作，按未知命令谨慎处理。"
+    },
+    {
+      "command": "python scripts/migrate.py",
+      "expected": "CAUTION",
+      "predicted": "CAUTION",
+      "reason": "未匹配到已知安全读操作，按未知命令谨慎处理。"
+    },
+    {
+      "command": "rm -rf /var/lib/data",
+      "expected": "DANGER",
+      "predicted": "DANGER",
+      "reason": "包含 rm 递归强制删除操作。"
+    },
+    {
+      "command": "DROP TABLE users",
+      "expected": "DANGER",
+      "predicted": "DANGER",
+      "reason": "包含 DROP TABLE 破坏性数据库操作。"
+    },
+    {
+      "command": "kubectl delete pod api-0",
+      "expected": "DANGER",
+      "predicted": "DANGER",
+      "reason": "包含 kubectl delete 删除集群资源。"
+    },
+    {
+      "command": "kubectl apply -f prod.yaml",
+      "expected": "DANGER",
+      "predicted": "DANGER",
+      "reason": "包含 kubectl apply -f 变更集群资源。"
+    },
+    {
+      "command": "chmod 777 /etc/passwd",
+      "expected": "DANGER",
+      "predicted": "DANGER",
+      "reason": "包含 chmod 777 高风险权限变更。"
+    },
+    {
+      "command": "dd if=/dev/zero of=/dev/sda",
+      "expected": "DANGER",
+      "predicted": "DANGER",
+      "reason": "包含 dd if= 块设备写入风险命令。"
+    },
+    {
+      "command": ":(){ :|:& };:",
+      "expected": "DANGER",
+      "predicted": "DANGER",
+      "reason": "包含 fork bomb。"
+    },
+    {
+      "command": "kubectl get pods; rm -rf /",
+      "expected": "DANGER",
+      "predicted": "DANGER",
+      "reason": "包含 rm 递归强制删除操作。"
+    },
+    {
+      "command": "kubectl get pods && rm /tmp/file",
+      "expected": "DANGER",
+      "predicted": "DANGER",
+      "reason": "包含 shell 注入 rm 命令。"
+    },
+    {
+      "command": "kubectl get pods | dd of=/tmp/out",
+      "expected": "DANGER",
+      "predicted": "DANGER",
+      "reason": "包含 shell 注入 dd 命令。"
+    },
+    {
+      "command": "kubectl get pods $(rm /tmp/file)",
+      "expected": "DANGER",
+      "predicted": "DANGER",
+      "reason": "包含 shell 注入 rm 命令。"
+    },
+    {
+      "command": "rm -fr /var/lib/data",
+      "expected": "DANGER",
+      "predicted": "DANGER",
+      "reason": "包含 rm 递归强制删除操作。"
+    },
+    {
+      "command": "rm -r -f /var/lib/data",
+      "expected": "DANGER",
+      "predicted": "DANGER",
+      "reason": "包含 rm 递归强制删除操作。"
+    },
+    {
+      "command": "echo ok; dd if=/dev/zero of=/tmp/blob",
+      "expected": "DANGER",
+      "predicted": "DANGER",
+      "reason": "包含 dd if= 块设备写入风险命令。"
+    },
+    {
+      "command": "kubectl get pods; kubectl delete pod api-0",
+      "expected": "DANGER",
+      "predicted": "DANGER",
+      "reason": "包含 kubectl delete 删除集群资源。"
+    }
+  ],
+  "optimization_comparison": {
+    "change": "alpha 0.3 -> 0.1 with z_threshold 2.5",
+    "before": {
+      "alpha": 0.3,
+      "z_threshold": 2.5,
+      "precision": 1.0,
+      "recall": 0.8333,
+      "f1": 0.9091,
+      "false_positive_rate": 0.0
+    },
+    "after": {
+      "alpha": 0.1,
+      "z_threshold": 2.5,
+      "precision": 1.0,
+      "recall": 0.9583,
+      "f1": 0.9787,
+      "false_positive_rate": 0.0
+    },
+    "f1_delta": 0.0696
+  },
+  "rag_query_count": 10,
+  "gemini_model": "gemini-3.5-flash",
+  "gemini_response": {
+    "quantitative_appendix_markdown": "### 1. 异常检测参数敏感性分析 (3x3 Grid)\n\n在不同平滑系数 $\\alpha$ (alpha) 和阈值 $z\\_threshold$ 组合下，异常检测的指标表现如下：\n\n| $\\alpha$ (alpha) | $z\\_threshold$ | Precision | Recall | F1-Score | False Positive Rate |\n| :--- | :--- | :--- | :--- | :--- | :--- |\n| 0.1 | 2.0 | 1.0000 | 0.9583 | 0.9787 | 0.0000 |\n| 0.1 | 2.5 | 1.0000 | 0.9583 | 0.9787 | 0.0000 |\n| 0.1 | 3.0 | 1.0000 | 0.9583 | 0.9787 | 0.0000 |\n| 0.2 | 2.0 | 1.0000 | 0.9583 | 0.9787 | 0.0000 |\n| 0.2 | 2.5 | 1.0000 | 0.9583 | 0.9787 | 0.0000 |\n| 0.2 | 3.0 | 1.0000 | 0.9583 | 0.9787 | 0.0000 |\n| 0.3 | 2.0 | 1.0000 | 0.8333 | 0.9091 | 0.0000 |\n| 0.3 | 2.5 | 1.0000 | 0.8333 | 0.9091 | 0.0000 |\n| 0.3 | 3.0 | 1.0000 | 0.8333 | 0.9091 | 0.0000 |\n\n### 2. 不同时间粒度下的异常检测对比 (1s / 10s / 60s)\n\n| 时间粒度 (Window) | 异常类型 (Anomaly Type) | Precision | Recall | F1-Score | FPR |\n| :--- | :--- | :--- | :--- | :--- | :--- |\n| 1s | latency_spike | 0.6000 | 0.3000 | 0.4000 | 0.0182 |\n| 1s | transaction_conflict | 0.4000 | 0.2000 | 0.2667 | 0.0273 |\n| 10s | latency_spike | 0.5217 | 1.0000 | 0.6857 | 0.0982 |\n| 10s | transaction_conflict | 0.4783 | 0.9167 | 0.6286 | 0.1071 |\n| 60s | latency_spike | 0.5714 | 1.0000 | 0.7273 | 0.1364 |\n| 60s | transaction_conflict | 0.4286 | 0.7500 | 0.5455 | 0.1818 |\n\n**粒度适用性及原因分析：**\n*   **延迟突增 (latency_spike)**：**60s 粒度更适合**（F1-Score 达到最高值 0.7273，Recall 为 1.0000）。延迟突增在较长的时间窗口内可以呈现出更明显的统计对比特征，而极短窗口（如 1s）容易受到突发毛刺的瞬时波动干扰，导致召回率极低（Recall 仅 0.3000）。\n*   **事务冲突 (transaction_conflict)**：**10s 粒度更适合**（F1-Score 达到最高值 0.6286，Recall 为 0.9167）。事务冲突具有时效性。当窗口延长到 60s 时，局部的冲突特征容易被长周期内的正常事务所稀释，导致召回率下降至 0.7500，F1-Score 跌至 0.5455。而 1s 窗口过短，无法捕获一个完整事务冲突周期的度量表现，导致 Recall 仅为 0.2000。\n\n### 3. RAG 分块策略评估\n\n针对 10 条 Query，评估了两种不同的 chunking 策略在 Recall@5 上的表现：\n\n| 分块策略 (Strategy) | 分块数量 (Chunk Count) | 平均分块字数 (Avg Chars) | Recall@5 |\n| :--- | :--- | :--- | :--- |\n| 固定长度分块 (fixed) | 14 | 566.36 | 1.0000 |\n| 语义分块 (semantic) | 14 | 566.36 | 1.0000 |\n\n**影响分析：**\n在本测试集的 10 条 Query 中，无论是固定长度分块还是语义分块，其 Recall@5 均达到了 **1.0 (100%)**。这表明在该样本规模及参数配置下，两种策略的表现同样优异，**没有特定类型的 Query 受到分块策略的不利影响**。\n\n### 4. 命令安全分级准确率与案例分析\n\n*   **总评估命令条数**：29 条\n*   **分类准确率**：100% (29/29)\n*   **误分类案例**：无 (0 个误分类案例)\n\n**典型安全分级案例展示：**\n*   **SAFE（安全）案例**：\n    *   `kubectl get pods -A` -> 预测：`SAFE`（原因：只读取 Kubernetes 资源列表。）\n    *   `top` -> 预测：`SAFE`（原因：只查看系统进程概览。）\n*   **CAUTION（警告）案例**：\n    *   `systemctl restart nginx` -> 预测：`CAUTION`（原因：包含 systemctl restart 操作。）\n    *   `kubectl rollout restart deployment api` -> 预测：`CAUTION`（原因：包含服务重启操作。）\n*   **DANGER（危险）案例**：\n    *   `rm -rf /var/lib/data` -> 预测：`DANGER`（原因：包含 rm 递归强制删除操作。）\n    *   `DROP TABLE users` -> 预测：`DANGER`（原因：包含 DROP TABLE 破坏性数据库操作。）\n    *   `kubectl get pods && rm /tmp/file` -> 预测：`DANGER`（原因：包含 shell 注入 rm 命令。）\n\n### 5. 异常检测算法优化对比\n\n针对异常检测算法中的参数配置进行了优化对比（优化前 vs 优化后）：\n\n| 阶段 | 参数配置 | Precision | Recall | F1-Score | False Positive Rate |\n| :--- | :--- | :--- | :--- | :--- | :--- |\n| **优化前 (Before)** | alpha = 0.3, z_threshold = 2.5 | 1.0000 | 0.8333 | 0.9091 | 0.0000 |\n| **优化后 (After)** | alpha = 0.1, z_threshold = 2.5 | 1.0000 | 0.9583 | 0.9787 | 0.0000 |\n| **差值 (Delta)** | alpha 0.3 -> 0.1 | 0.0000 | +0.1250 | **+0.0696** | 0.0000 |\n\n**优化结论**：\n通过调整参数，平滑系数 `alpha` 从 0.3 降低到 0.1（保持 `z_threshold` 在 2.5），召回率（Recall）从 0.8333 提升至 0.9583，从而促使 **F1-Score 提升了 0.0696**（即 6.96% 的绝对 F1 提升），同时保持了 0.0 的零误报率（False Positive Rate），显著优化了检测系统的敏感度与稳定性。"
+  }
+}
