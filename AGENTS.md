@@ -1,4 +1,4 @@
-# AGENTS.md instructions for /Users/haofu/workspace/xiaodai/interview/aiops-log-agent
+# AGENTS.md
 
 优先使用中文。
 # 写代码时对于关键逻辑，必须给出必要的中文注释
