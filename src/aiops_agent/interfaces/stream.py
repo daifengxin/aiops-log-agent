@@ -8,7 +8,7 @@ from typing import Any
 from aiops_agent.graph.builder import build_diagnosis_graph
 from aiops_agent.interfaces.cli import _jsonable
 from aiops_agent.services.detection_service import DetectionConfig, DetectionService
-from aiops_agent.services.log_service import LogService
+from aiops_agent.services.log_service import parse_jsonl_line
 
 
 async def stream_file(
@@ -17,22 +17,35 @@ async def stream_file(
     batch_size: int = 20,
     window_seconds: int = 10,
 ) -> None:
-    """一次性读取日志，然后按增长窗口异步输出诊断快照。"""
+    """逐行消费 JSONL 日志，并按批次异步输出诊断快照。"""
 
-    records = LogService().read_jsonl(path)
+    records = []
+    pending_count = 0
     detection = DetectionService(DetectionConfig(window_seconds=window_seconds))
     graph = build_diagnosis_graph(detection_service=detection)
-    for end in range(batch_size, len(records) + batch_size, batch_size):
-        batch = records[: min(end, len(records))]
-        if not batch:
-            break
 
-        result = _jsonable(graph.invoke({"records": batch}))
-        event = _stream_event(records_seen=len(batch), result=result)
-        print(json.dumps(event, ensure_ascii=False), flush=True)
+    with path.open("r", encoding="utf-8") as input_file:
+        for line in input_file:
+            record = parse_jsonl_line(line)
+            if record is None:
+                continue
+            records.append(record)
+            pending_count += 1
+            if pending_count >= batch_size:
+                _emit_snapshot(graph, records)
+                pending_count = 0
+                # emit_interval 控制文件回放节奏，用于模拟实时日志到达。
+                if emit_interval > 0:
+                    await asyncio.sleep(emit_interval)
 
-        if len(batch) < len(records):
-            await asyncio.sleep(emit_interval)
+    if pending_count:
+        _emit_snapshot(graph, records)
+
+
+def _emit_snapshot(graph: Any, records: list[Any]) -> None:
+    result = _jsonable(graph.invoke({"records": records}))
+    event = _stream_event(records_seen=len(records), result=result)
+    print(json.dumps(event, ensure_ascii=False), flush=True)
 
 
 def run_stream(path: Path, window_seconds: int, emit_interval: float) -> None:

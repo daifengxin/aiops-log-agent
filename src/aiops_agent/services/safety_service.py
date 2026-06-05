@@ -42,6 +42,7 @@ class CommandSafetyService:
             _rule(r"^\s*kubectl\s+get\b", "SAFE", "只读取 Kubernetes 资源列表。"),
             _rule(r"^\s*kubectl\s+describe\b", "SAFE", "只读取 Kubernetes 资源详情。"),
             _rule(r"^\s*kubectl\s+logs\b", "SAFE", "只读取 Kubernetes 日志。"),
+            _rule(r"^\s*kubectl\s+top\b", "SAFE", "只读取 Kubernetes 资源用量。"),
             _rule(r"^\s*top\b", "SAFE", "只查看系统进程概览。"),
             _rule(r"^\s*ps\b", "SAFE", "只查看进程列表。"),
             _rule(r"^\s*netstat\b", "SAFE", "只查看网络连接状态。"),

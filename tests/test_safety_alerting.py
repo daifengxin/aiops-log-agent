@@ -15,6 +15,7 @@ def test_command_safety_levels():
     assert service.classify("kubectl rollout restart deployment api").level == "CAUTION"
     assert service.classify("rm -rf /var/lib/data").level == "DANGER"
     assert service.classify("kubectl get pods; rm -rf /").level == "DANGER"
+    assert service.classify("kubectl top pods -n prod").level == "SAFE"
 
 
 @pytest.mark.parametrize(

@@ -11,6 +11,7 @@ def safety_test_cases() -> list[SafetyCase]:
         {"command": "kubectl get pods -A", "expected": "SAFE"},
         {"command": "kubectl describe pod api-0", "expected": "SAFE"},
         {"command": "kubectl logs deployment/api", "expected": "SAFE"},
+        {"command": "kubectl top pods -n prod", "expected": "SAFE"},
         {"command": "top", "expected": "SAFE"},
         {"command": "ps aux", "expected": "SAFE"},
         {"command": "netstat -tulpn", "expected": "SAFE"},

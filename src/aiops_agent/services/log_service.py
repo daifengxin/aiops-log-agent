@@ -14,15 +14,23 @@ class LogService:
             for line in input_file:
                 if limit is not None and len(records) >= limit:
                     break
-                if not line.strip():
+                record = parse_jsonl_line(line)
+                if record is None:
                     continue
-
-                row = json.loads(line)
-                payload = dict(row)
-                payload["timestamp"] = datetime.fromisoformat(row["timestamp"])
-                payload["is_anomaly"] = _parse_bool(row["is_anomaly"])
-                records.append(LogRecord.model_validate(payload))
+                records.append(record)
         return records
+
+
+def parse_jsonl_line(line: str) -> LogRecord | None:
+    """解析单条 JSONL 日志；流式入口复用它，避免一次性读完整文件。"""
+
+    if not line.strip():
+        return None
+    row = json.loads(line)
+    payload = dict(row)
+    payload["timestamp"] = datetime.fromisoformat(row["timestamp"])
+    payload["is_anomaly"] = _parse_bool(row["is_anomaly"])
+    return LogRecord.model_validate(payload)
 
 
 def _parse_bool(value: object) -> bool:

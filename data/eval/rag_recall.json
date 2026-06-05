@@ -1,0 +1,14 @@
+[
+  {
+    "strategy": "fixed",
+    "chunk_count": 14,
+    "avg_chunk_chars": 566.36,
+    "recall_at_5": 1.0
+  },
+  {
+    "strategy": "semantic",
+    "chunk_count": 14,
+    "avg_chunk_chars": 566.36,
+    "recall_at_5": 1.0
+  }
+]
